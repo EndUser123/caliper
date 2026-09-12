@@ -13,6 +13,7 @@ from caliper.harness.base import (
     CliHarness,
     HarnessConfigurationError,
     ProcessResult,
+    PromptCall,
     PromptResult,
     RunContext,
 )
@@ -256,19 +257,18 @@ class CodexHarness(CliHarness):
 
     # --- bare prompt call (the judge's half of the seam) -------------------
 
-    def _prompt_command(
-        self, prompt: str, model: str | None, extras: dict
-    ) -> tuple[list[str], str | None, Callable[[], None] | None]:
+    def _prompt_command(self, prompt: str, model: str | None) -> PromptCall:
         codex = self.cli_path()
         if not codex:
             raise HarnessConfigurationError("codex CLI not found")
 
         # `--output-last-message` writes the final answer to a file, which is
         # the only clean channel: codex's stdout is a noisy session log. The
-        # file outlives the process so _prompt_output can read it; it is
-        # deleted there, not via the post-exec cleanup hook.
+        # file outlives the process so the reader can pick it up; the reader
+        # closes over its path, and ``cleanup`` removes it however the call
+        # ended — a timeout never reaches the reader.
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as output_file:
-            extras["output_path"] = output_file.name
+            output_path = Path(output_file.name)
 
         cmd = [
             codex,
@@ -278,22 +278,22 @@ class CodexHarness(CliHarness):
             "--color",
             "never",
             "--output-last-message",
-            extras["output_path"],
+            str(output_path),
             "-",
         ]
         if model:
             cmd[2:2] = ["--model", model]
-        return cmd, prompt, None
+        return PromptCall(
+            cmd,
+            stdin=prompt,
+            read=lambda proc: self._read_last_message(proc, model, output_path),
+            cleanup=lambda: output_path.unlink(missing_ok=True),
+        )
 
-    def _prompt_output(
-        self, proc: ProcessResult, model: str | None, extras: dict
+    def _read_last_message(
+        self, proc: ProcessResult, model: str | None, output_path: Path
     ) -> PromptResult:
-        output_path = Path(extras["output_path"])
-        try:
-            raw = output_path.read_text().strip() if output_path.exists() else ""
-        finally:
-            output_path.unlink(missing_ok=True)
-
+        raw = output_path.read_text().strip() if output_path.exists() else ""
         raw = raw or proc.stdout.strip()
         if proc.returncode != 0:
             detail = _extract_codex_error(proc.stderr) or _extract_codex_error(raw)

@@ -14,6 +14,9 @@ from caliper.schema.spec import TaskSpec
 class RecordingJudge:
     """A judge that answers with a fixed verdict and remembers being called."""
 
+    backend = "test"
+    model = None
+
     def __init__(self, result: JudgeResult | None = None) -> None:
         self.result = result or JudgeResult(passed=True, reasoning="looks right")
         self.calls = 0
@@ -56,8 +59,6 @@ def _read_turn(path: str) -> ConversationTurn:
 
 def _result(**overrides) -> AttemptResult:
     fields = dict(
-        task_id="task-001",
-        attempt=1,
         transcript=[],
         final_output="done",
         exit_code=0,
@@ -132,13 +133,6 @@ def test_the_attempt_record_carries_the_harness_result_verbatim():
     assert [t.content for t in record.transcript or []] == ["hi"]
 
 
-def test_the_record_is_numbered_from_the_caller_not_the_harnesss_echo():
-    """The runner owns the 1..k counter; a backend only echoes it back."""
-    assembled = _assemble(_result(attempt=99), attempt=3)
-
-    assert assembled.record.attempt == 3
-
-
 def test_the_judges_resolved_model_is_reported_back():
     judge = RecordingJudge(
         JudgeResult(passed=True, reasoning="ok", resolved_model="claude-sonnet-5")
@@ -210,6 +204,25 @@ def test_a_cheat_outranks_a_missing_execution_check():
     )
 
     assert assembled.record.outcome is Outcome.CHEAT
+
+
+def test_a_timeout_outranks_a_missing_execution_check():
+    """A trigger probe that never got a fair shot is noise, not not_checked."""
+    judge = RecordingJudge()
+    assembled = _assemble(
+        _result(exit_code=124, timed_out=True),
+        task=_task(expect=None, activates=["x"]),
+        judge=judge,
+    )
+    assert assembled.record.outcome is Outcome.TIMEOUT
+    assert judge.calls == 0
+
+
+def test_an_errored_judge_is_a_judge_error_not_a_task_fail():
+    """A check existed and the grader broke: unusable, not a real failure."""
+    judge = RecordingJudge(JudgeResult(passed=False, reasoning="flaked", errored=True))
+    assembled = _assemble(_result(), judge=judge)
+    assert assembled.record.outcome is Outcome.JUDGE_ERROR
 
 
 # --- activation rides on every path ----------------------------------------

@@ -11,6 +11,7 @@ from caliper.harness.base import (
     ConversationTurn,
     CliHarness,
     ProcessResult,
+    PromptCall,
     PromptResult,
     RunContext,
 )
@@ -56,6 +57,11 @@ class ClaudeCodeHarness(CliHarness):
     def skills_root(self, ctx: RunContext) -> Path:
         return Path(ctx.isolated_home) / ".claude" / "skills"
 
+    @staticmethod
+    def _credentials_file(ctx: RunContext) -> Path:
+        """Where the CLI looks for file-based credentials in the isolated home."""
+        return Path(ctx.isolated_home) / ".claude" / ".credentials.json"
+
     def seed_files(self, ctx: RunContext) -> list[tuple[Path, Path]]:
         # Auth files from the real HOME, so the CLI finds its credentials.
         # Without them the isolated HOME makes claude fall back to
@@ -64,24 +70,18 @@ class ClaudeCodeHarness(CliHarness):
         home = Path(ctx.isolated_home)
         return [
             (real_home / ".claude.json", home / ".claude.json"),
-            (
-                real_home / ".claude" / ".credentials.json",
-                home / ".claude" / ".credentials.json",
-            ),
+            (real_home / ".claude" / ".credentials.json", self._credentials_file(ctx)),
         ]
 
     def _prepare(self, ctx: RunContext) -> None:
-        home = Path(ctx.isolated_home)
-        (home / ".claude").mkdir(parents=True, exist_ok=True)
+        (Path(ctx.isolated_home) / ".claude").mkdir(parents=True, exist_ok=True)
 
         # On macOS, OAuth credentials may live in the Keychain rather than in
         # .credentials.json. Seed the isolated home so the subprocess can auth
         # without a browser login flow.
-        creds_dst = home / ".claude" / ".credentials.json"
+        creds_dst = self._credentials_file(ctx)
         if sys.platform == "darwin" and not creds_dst.exists():
             self._seed_credentials_from_keychain(creds_dst)
-
-        ctx.extras["has_file_credentials"] = creds_dst.exists()
 
     def _command(
         self, ctx: RunContext
@@ -150,8 +150,9 @@ class ClaudeCodeHarness(CliHarness):
 
         # Only forward API keys when there are no file-based credentials and no
         # Keychain credentials — avoids overriding valid OAuth auth with a
-        # potentially unfunded key.
-        if not ctx.extras.get("has_file_credentials", False):
+        # potentially unfunded key. Read off the home rather than remembered
+        # from ``_prepare``: the file is the fact, and it is still there.
+        if not self._credentials_file(ctx).exists():
             for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
                 if key in os.environ:
                     env[key] = os.environ[key]
@@ -258,15 +259,13 @@ class ClaudeCodeHarness(CliHarness):
 
     # --- bare prompt call (the judge's half of the seam) -------------------
 
-    def _prompt_command(
-        self, prompt: str, model: str | None, extras: dict
-    ) -> tuple[list[str], str | None, Callable[[], None] | None]:
+    def _prompt_command(self, prompt: str, model: str | None) -> PromptCall:
         # JSON output (over plain text) so we can read the *concrete* model
         # Claude used — the answer lives in `.result`, the model in `.modelUsage`.
         cmd = ["claude", "-p", prompt, "--output-format", "json"]
         if model:
             cmd += ["--model", model]
-        return cmd, None, None
+        return PromptCall(cmd)
 
     def _prompt_environment(self) -> dict[str, str]:
         env = dict(os.environ)
@@ -275,9 +274,7 @@ class ClaudeCodeHarness(CliHarness):
             env["PATH"] = nvm_bin + os.pathsep + env.get("PATH", "")
         return env
 
-    def _prompt_output(
-        self, proc: ProcessResult, model: str | None, extras: dict
-    ) -> PromptResult:
+    def _prompt_output(self, proc: ProcessResult, model: str | None) -> PromptResult:
         classified = _classify_claude_prompt_failure(proc.stdout, model)
         if classified is not None:
             return classified

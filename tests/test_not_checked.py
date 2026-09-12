@@ -6,9 +6,13 @@ from typer.testing import CliRunner
 
 from caliper.commands.list_cmd import _score_cell
 from caliper.reporter import RULE_GLYPH, UNUSABLE_GLYPH
-from caliper.harness.base import AttemptResult, ConversationTurn, HarnessBackend
+from caliper.harness.base import (
+    AttemptResult,
+    ConversationTurn,
+    HarnessBackend,
+    RunContext,
+)
 from caliper.judge.base import JudgeResult
-from caliper.outcome import classify_outcome
 from caliper.reporter import _status_cell
 from caliper.main import app
 from caliper.runner import run
@@ -23,55 +27,6 @@ from caliper.schema.results import (
 from caliper.schema.spec import EvalSpec, TaskSpec
 
 from conftest import task_result
-
-
-# --- classification -------------------------------------------------------
-
-
-def _clean() -> AttemptResult:
-    return AttemptResult(
-        task_id="task-001",
-        attempt=1,
-        transcript=[],
-        final_output="done",
-        exit_code=0,
-        duration_seconds=0.1,
-    )
-
-
-def test_no_execution_check_is_not_checked_not_judge_error():
-    assert (
-        classify_outcome(_clean(), [], None, has_execution_check=False)
-        is Outcome.NOT_CHECKED
-    )
-
-
-def test_a_missing_verdict_when_a_check_existed_is_still_judge_error():
-    assert classify_outcome(_clean(), [], None) is Outcome.JUDGE_ERROR
-
-
-def test_cheating_outranks_not_checked():
-    # A trigger probe that read the answer key is still a cheat.
-    assert (
-        classify_outcome(_clean(), ["/x/answers.txt"], None, has_execution_check=False)
-        is Outcome.CHEAT
-    )
-
-
-def test_infra_failure_outranks_not_checked():
-    timed_out = AttemptResult(
-        task_id="task-001",
-        attempt=1,
-        transcript=[],
-        final_output="",
-        exit_code=124,
-        duration_seconds=0.1,
-        timed_out=True,
-    )
-    assert (
-        classify_outcome(timed_out, [], None, has_execution_check=False)
-        is Outcome.TIMEOUT
-    )
 
 
 # --- scoring --------------------------------------------------------------
@@ -124,23 +79,8 @@ class CleanHarness(HarnessBackend):
     def name(self) -> str:
         return "clean"
 
-    def run(
-        self,
-        task_id: str,
-        attempt: int,
-        prompt: str,
-        *,
-        skill_refs: list,
-        model: str | None,
-        timeout: int,
-        isolated_home: str,
-        extra_path: list[str] | None = None,
-        mcp_servers: dict | None = None,
-        forbidden_files: list | None = None,
-    ) -> AttemptResult:
+    def run(self, ctx: RunContext) -> AttemptResult:
         return AttemptResult(
-            task_id=task_id,
-            attempt=attempt,
             transcript=[ConversationTurn(role="assistant", content="Paris.")],
             final_output="Paris.",
             exit_code=0,
@@ -149,6 +89,9 @@ class CleanHarness(HarnessBackend):
 
 
 class CountingJudge:
+    backend = "test"
+    model = None
+
     def __init__(self) -> None:
         self.calls = 0
 
@@ -290,23 +233,8 @@ class TimingOutHarness(HarnessBackend):
     def name(self) -> str:
         return "timeout"
 
-    def run(
-        self,
-        task_id,
-        attempt,
-        prompt,
-        *,
-        skill_refs,
-        model,
-        timeout,
-        isolated_home,
-        extra_path=None,
-        mcp_servers=None,
-        forbidden_files=None,
-    ) -> AttemptResult:
+    def run(self, ctx: RunContext) -> AttemptResult:
         return AttemptResult(
-            task_id=task_id,
-            attempt=attempt,
             transcript=[],
             final_output="",
             exit_code=124,

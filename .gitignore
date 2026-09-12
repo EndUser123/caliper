@@ -10,3 +10,4 @@ venv/
 *.json
 !examples/*.json
 .env
+skills/*/evals/results/

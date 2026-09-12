@@ -24,6 +24,7 @@ from caliper.harness.base import (
     ConversationTurn,
     HarnessBackend,
     HarnessConfigurationError,
+    RunContext,
 )
 from caliper.judge.base import JudgeResult
 from caliper.main import app
@@ -42,6 +43,9 @@ runner = CliRunner()
 
 
 class PassingJudge:
+    backend = "test"
+    model = None
+
     def evaluate(self, task, transcript, final_output, spec_dir) -> JudgeResult:
         return JudgeResult(passed=True, reasoning="ok")
 
@@ -58,17 +62,15 @@ class CancellingHarness(HarnessBackend):
     def name(self) -> str:
         return "cancelling"
 
-    def run(self, task_id: str, attempt: int, prompt: str, **kwargs) -> AttemptResult:
-        self.started.append(attempt)
-        if attempt >= self.cancel_after:
+    def run(self, ctx: RunContext) -> AttemptResult:
+        self.started.append(ctx.attempt)
+        if ctx.attempt >= self.cancel_after:
             cancel.request()
         if self.then_fail:
             # What a killed agent looks like coming back: a non-zero exit,
             # nothing to show for it, and — the part only the spawn knows —
             # `cancelled`, saying *we* killed it rather than it failing.
             return AttemptResult(
-                task_id=task_id,
-                attempt=attempt,
                 transcript=[],
                 final_output="",
                 exit_code=-9,
@@ -77,8 +79,6 @@ class CancellingHarness(HarnessBackend):
                 cancelled=True,
             )
         return AttemptResult(
-            task_id=task_id,
-            attempt=attempt,
             transcript=[ConversationTurn(role="assistant", content="done")],
             final_output="done",
             exit_code=0,
@@ -96,12 +96,10 @@ class ExpiringHarness(HarnessBackend):
     def name(self) -> str:
         return "expiring"
 
-    def run(self, task_id: str, attempt: int, prompt: str, **kwargs) -> AttemptResult:
-        if attempt >= self.fail_from:
+    def run(self, ctx: RunContext) -> AttemptResult:
+        if ctx.attempt >= self.fail_from:
             raise HarnessConfigurationError("credentials expired mid-run")
         return AttemptResult(
-            task_id=task_id,
-            attempt=attempt,
             transcript=[],
             final_output="done",
             exit_code=0,
@@ -198,11 +196,9 @@ class FailsOnItsOwnHarness(HarnessBackend):
     def name(self) -> str:
         return "failing"
 
-    def run(self, task_id: str, attempt: int, prompt: str, **kwargs) -> AttemptResult:
+    def run(self, ctx: RunContext) -> AttemptResult:
         cancel.request()
         return AttemptResult(
-            task_id=task_id,
-            attempt=attempt,
             transcript=[],
             final_output="",
             exit_code=1,

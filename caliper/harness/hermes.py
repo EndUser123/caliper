@@ -11,6 +11,7 @@ from caliper.harness.base import (
     CliHarness,
     HarnessConfigurationError,
     ProcessResult,
+    PromptCall,
     RunContext,
 )
 from caliper.harness.mcp import resolve_servers
@@ -76,17 +77,16 @@ class HermesHarness(CliHarness):
 
     @staticmethod
     def _hermes_home(ctx: RunContext) -> Path:
+        """The per-attempt ``HERMES_HOME``, a function of the isolated home."""
         return Path(ctx.isolated_home) / ".hermes"
 
     def _prepare(self, ctx: RunContext) -> None:
         hermes_home = self._hermes_home(ctx)
         hermes_home.mkdir(parents=True, exist_ok=True)
-        ctx.extras["hermes_home"] = str(hermes_home)
-
         self._configure_mcp(ctx, hermes_home)
 
     def skills_root(self, ctx: RunContext) -> Path:
-        return Path(ctx.extras["hermes_home"]) / "skills"
+        return self._hermes_home(ctx) / "skills"
 
     def _configure_mcp(self, ctx: RunContext, hermes_home: Path) -> None:
         """Normalize the seeded config's ``mcp_servers`` to exactly the declared set.
@@ -164,7 +164,7 @@ class HermesHarness(CliHarness):
         return self._isolated_env(
             ctx,
             extra={
-                "HERMES_HOME": ctx.extras["hermes_home"],
+                "HERMES_HOME": str(self._hermes_home(ctx)),
                 "CALIPER_HERMES": self.cli_path() or "hermes",
                 "CALIPER_PROMPT": ctx.prompt,
             },
@@ -178,9 +178,7 @@ class HermesHarness(CliHarness):
 
     # --- bare prompt call (the judge's half of the seam) -------------------
 
-    def _prompt_command(
-        self, prompt: str, model: str | None, extras: dict
-    ) -> tuple[list[str], str | None, Callable[[], None] | None]:
+    def _prompt_command(self, prompt: str, model: str | None) -> PromptCall:
         hermes = self.cli_path()
         if not hermes:
             raise HarnessConfigurationError("hermes CLI not found")
@@ -192,7 +190,7 @@ class HermesHarness(CliHarness):
         cmd = [hermes, "-z", prompt, "--ignore-rules"]
         if model:
             cmd[2:2] = ["--model", model]
-        return cmd, None, None
+        return PromptCall(cmd)
 
     def _parse_stream(self, stdout: str) -> tuple[list[ConversationTurn], str]:
         """Parse a `hermes sessions export` record into turns.

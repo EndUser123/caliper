@@ -31,7 +31,14 @@ class Judge(Protocol):
     A structural seam, not a family — there is one production implementation
     (``EvalJudge``); test doubles conform by shape. Backend variation lives in
     ``HarnessBackend.run_prompt`` (see PR #61), not here.
+
+    ``backend`` and ``model`` are the judge engine as configured — what
+    ``RunMeta`` records, asked of the judge rather than passed in beside it.
+    ``model`` is ``None`` when the judge lets its CLI pick.
     """
+
+    backend: str
+    model: str | None
 
     def evaluate(
         self,

@@ -155,7 +155,6 @@ def test_claude_harness_does_not_classify_without_envelope(monkeypatch) -> None:
     harness_result = ClaudeCodeHarness()._prompt_output(
         ProcessResult(stdout="plain text", stderr="", returncode=0, timed_out=False),
         None,
-        {},
     )
     assert harness_result.failure is None
     assert harness_result.text == "plain text"

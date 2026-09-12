@@ -15,7 +15,7 @@ from caliper.harness.codex import CodexHarness
 from caliper.schema.spec import McpServer
 from caliper.skills import resolve_skills
 
-from conftest import patch_cli_calls
+from conftest import patch_cli_calls, run_context
 
 
 def test_codex_installs_the_skill_and_leaves_the_prompt_alone(
@@ -54,14 +54,14 @@ def test_codex_installs_the_skill_and_leaves_the_prompt_alone(
     patch_cli_calls(monkeypatch, fake_run)
 
     result = CodexHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Validate the spec",
-        skill_refs=refs,
-        model="test-model",
-        timeout=30,
-        isolated_home=str(tmp_path),
-        extra_path=[str(tmp_path / "bin")],
+        run_context(
+            prompt="Validate the spec",
+            skill_refs=refs,
+            model="test-model",
+            timeout=30,
+            isolated_home=str(tmp_path),
+            extra_path=[str(tmp_path / "bin")],
+        )
     )
 
     assert result.exit_code == 0
@@ -94,13 +94,12 @@ def test_codex_cli_omits_model_when_unspecified(monkeypatch, tmp_path) -> None:
     patch_cli_calls(monkeypatch, fake_run)
 
     result = CodexHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Hello",
-        skill_refs=[],
-        model=None,
-        timeout=12,
-        isolated_home=str(tmp_path),
+        run_context(
+            prompt="Hello",
+            model=None,
+            timeout=12,
+            isolated_home=str(tmp_path),
+        )
     )
 
     assert result.exit_code == 0
@@ -155,13 +154,12 @@ def test_codex_json_stream_captures_tool_calls(monkeypatch, tmp_path) -> None:
     patch_cli_calls(monkeypatch, fake_run)
 
     result = CodexHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Inspect the repo",
-        skill_refs=[],
-        model=None,
-        timeout=12,
-        isolated_home=str(tmp_path),
+        run_context(
+            prompt="Inspect the repo",
+            model=None,
+            timeout=12,
+            isolated_home=str(tmp_path),
+        )
     )
 
     assert result.final_output == "done"
@@ -210,13 +208,12 @@ def test_codex_json_stream_keeps_unknown_tool_items(monkeypatch, tmp_path) -> No
     patch_cli_calls(monkeypatch, fake_run)
 
     result = CodexHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Use a tool",
-        skill_refs=[],
-        model=None,
-        timeout=12,
-        isolated_home=str(tmp_path),
+        run_context(
+            prompt="Use a tool",
+            model=None,
+            timeout=12,
+            isolated_home=str(tmp_path),
+        )
     )
 
     assert result.final_output == "done"
@@ -292,13 +289,12 @@ def test_codex_fails_clearly_when_cli_is_not_runnable(monkeypatch, tmp_path) -> 
 
     with pytest.raises(HarnessConfigurationError) as exc:
         CodexHarness(model="fallback-model").run(
-            task_id="task-001",
-            attempt=1,
-            prompt="Hello",
-            skill_refs=[],
-            model=None,
-            timeout=12,
-            isolated_home=str(tmp_path),
+            run_context(
+                prompt="Hello",
+                model=None,
+                timeout=12,
+                isolated_home=str(tmp_path),
+            )
         )
 
     assert "Caliper runs skills only through CLI agents" in str(exc.value)
@@ -332,13 +328,12 @@ def test_codex_fails_clearly_when_cli_requires_newer_version(
 
     with pytest.raises(HarnessConfigurationError) as exc:
         CodexHarness().run(
-            task_id="task-001",
-            attempt=1,
-            prompt="Hello",
-            skill_refs=[],
-            model="gpt-5.4-mini",
-            timeout=12,
-            isolated_home=str(tmp_path),
+            run_context(
+                prompt="Hello",
+                model="gpt-5.4-mini",
+                timeout=12,
+                isolated_home=str(tmp_path),
+            )
         )
 
     message = str(exc.value)
@@ -394,14 +389,13 @@ def _run_codex_mcp(monkeypatch, tmp_path, mcp_servers, *, home=None):
     patch_cli_calls(monkeypatch, fake_run)
 
     CodexHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Hello",
-        skill_refs=[],
-        model=None,
-        timeout=30,
-        isolated_home=str(iso),
-        mcp_servers=mcp_servers,
+        run_context(
+            prompt="Hello",
+            model=None,
+            timeout=30,
+            isolated_home=str(iso),
+            mcp_servers=mcp_servers,
+        )
     )
     return iso / ".codex" / "config.toml"
 

@@ -21,7 +21,7 @@ from dataclasses import asdict, dataclass
 from caliper.activation import ActivationDetector, check_activation
 from caliper.harness.base import AttemptResult, ConversationTurn
 from caliper.judge.base import Judge
-from caliper.outcome import classify_outcome, classify_pre_judge
+from caliper.outcome import classify_pre_judge, judge_outcome
 from caliper.sandbox import Sandbox
 from caliper.schema.results import AttemptRecord, Outcome, TranscriptTurn
 from caliper.schema.spec import TaskSpec
@@ -56,10 +56,11 @@ def assemble_attempt(
 ) -> AssembledAttempt:
     """Grade one finished harness run into an ``AttemptRecord``.
 
-    Precedence follows ``classify_outcome``: timeout / infra error, then cheat,
-    then a missing execution check, then the judge's verdict. Each of the first
-    three exits *before* the judge is called, so an attempt that never got a
-    fair shot never spends a paid autorater call on garbage output.
+    The one place an outcome is decided (docs/adr/0001). Precedence: timeout /
+    infra error, then cheat, then a missing execution check, then the judge's
+    verdict. Each of the first three exits *before* the judge is called, so an
+    attempt that never got a fair shot never spends a paid autorater call on
+    garbage output.
 
     ``expected_activation`` is what this run asserts the task should activate —
     ``None`` on an ablated run, which drops the expectation but keeps the
@@ -123,18 +124,14 @@ def assemble_attempt(
 
     cheat_violations = sandbox.violations(result.transcript)
     if cheat_violations:
-        return with_outcome(
-            classify_outcome(result, cheat_violations, None),
-            cheat_evidence=cheat_violations,
-        )
+        return with_outcome(Outcome.CHEAT, cheat_evidence=cheat_violations)
 
     # An `activates:`-only task authored no execution check, so there is nothing
     # to grade — skip the (paid) judge call rather than spending it to receive a
-    # non-verdict and label the attempt an error.
+    # non-verdict and label the attempt an error. Ranks below cheat so a
+    # forbidden-file read is still caught on a trigger probe.
     if not (task.expect or task.assert_script):
-        return with_outcome(
-            classify_outcome(result, [], None, has_execution_check=False)
-        )
+        return with_outcome(Outcome.NOT_CHECKED)
 
     judge_started = time.monotonic()
     judge_result = judge.evaluate(
@@ -149,7 +146,7 @@ def assemble_attempt(
     # fast" and "no judge ran".
     judge_seconds = time.monotonic() - judge_started
     return with_outcome(
-        classify_outcome(result, [], judge_result),
+        judge_outcome(judge_result),
         judge_model=judge_result.resolved_model,
         judge_seconds=judge_seconds,
         assert_passed=judge_result.assert_passed,

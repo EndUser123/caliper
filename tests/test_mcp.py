@@ -7,6 +7,7 @@ from caliper.harness.base import (
     AttemptResult,
     HarnessBackend,
     HarnessConfigurationError,
+    RunContext,
 )
 from caliper.harness.mcp import resolve_servers
 from caliper.judge.base import JudgeResult
@@ -257,11 +258,9 @@ class _McpHarness(HarnessBackend):
     def name(self) -> str:
         return "yesmcp"
 
-    def run(self, *args, mcp_servers: dict | None = None, **kwargs) -> AttemptResult:
-        self.seen = mcp_servers
+    def run(self, ctx: RunContext) -> AttemptResult:
+        self.seen = ctx.mcp_servers
         return AttemptResult(
-            task_id=kwargs.get("task_id", "task-001"),
-            attempt=kwargs.get("attempt", 1),
             transcript=[],
             final_output="ok",
             exit_code=0,
@@ -270,6 +269,9 @@ class _McpHarness(HarnessBackend):
 
 
 class _PassJudge:
+    backend = "test"
+    model = None
+
     def evaluate(self, task, transcript, final_output, spec_dir) -> JudgeResult:
         return JudgeResult(passed=True, reasoning="ok")
 
@@ -296,7 +298,6 @@ def test_guard_refuses_mcp_spec_on_unsupported_backend(tmp_path) -> None:
             spec_path=spec_path,
             harness=_NoMcpHarness(),
             judge=_PassJudge(),
-            backend="codex",
             k=1,
             workers=1,
             timeout=30,
@@ -315,7 +316,6 @@ def test_guard_refusal_uses_backend_hint_when_present(tmp_path) -> None:
             spec_path=spec_path,
             harness=_ByDesignNoMcpHarness(),
             judge=_PassJudge(),
-            backend="bydesign",
             k=1,
             workers=1,
             timeout=30,
@@ -334,7 +334,6 @@ def test_guard_allows_mcp_spec_on_supporting_backend(tmp_path) -> None:
         spec_path=spec_path,
         harness=harness,
         judge=_PassJudge(),
-        backend="claude-code",
         k=1,
         workers=1,
         timeout=30,

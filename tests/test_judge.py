@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 
-from caliper.harness.base import ConversationTurn
+from caliper.harness.base import ProcessResult, ConversationTurn
 from caliper.harness.codex import _extract_codex_error, CodexHarness
 from caliper.harness.hermes import HermesHarness
 from caliper.harness.pi import PiHarness
@@ -56,7 +57,7 @@ def test_eval_judge_expect_only_calls_llm(monkeypatch, tmp_path) -> None:
             True,
             "Codex accepted the transcript.",
             False,
-            self._model,
+            self.model,
         ),
     )
 
@@ -318,6 +319,30 @@ def test_codex_missing_cli_errors(monkeypatch, tmp_path) -> None:
 
     assert result.error is not None
     assert "codex CLI not found" in result.error
+
+
+def test_codex_judge_timeout_removes_its_output_file(monkeypatch, tmp_path) -> None:
+    """The staged ``--output-last-message`` file is cleaned up on a timeout too.
+
+    A timed-out call never reaches the reader that would otherwise consume and
+    delete the file, so cleanup has to run regardless of how the call ended.
+    """
+    monkeypatch.setattr("caliper.harness.base.shutil.which", lambda _name: "codex")
+    monkeypatch.setattr("caliper.harness.codex.tempfile.tempdir", str(tmp_path))
+    staged: list[Path] = []
+
+    def timed_out(self, cmd, **kwargs):
+        staged.append(Path(cmd[cmd.index("--output-last-message") + 1]))
+        return ProcessResult(
+            stdout="", stderr="timeout", returncode=124, timed_out=True
+        )
+
+    monkeypatch.setattr(CodexHarness, "_execute", timed_out)
+
+    result = CodexHarness().run_prompt("anything", cwd=str(tmp_path), timeout=1)
+
+    assert result.error is not None and "timed out" in result.error
+    assert staged and not staged[0].exists()
 
 
 def test_codex_error_extraction_from_noisy_cli_output() -> None:

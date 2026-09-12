@@ -272,8 +272,9 @@ worse*, not *better*.
 
 ## Single-shot harness
 
-Every backend's `HarnessBackend.run(...)` takes one `prompt` and returns one
-transcript; nothing ever answers the agent's questions back. There is no
+Every backend's `HarnessBackend.run(ctx)` takes one attempt's `RunContext` —
+carrying one `prompt` — and returns one transcript; nothing ever answers the
+agent's questions back. There is no
 multi-turn / simulated-user turn-taking. Consequence: interview skills (their
 value is the back-and-forth) can only be tested on their **first-turn
 discipline**, not a full simulated conversation.

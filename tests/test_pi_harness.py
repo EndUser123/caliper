@@ -9,7 +9,7 @@ from caliper.harness.base import HarnessConfigurationError
 from caliper.harness.pi import PiHarness
 from caliper.skills import resolve_skills
 
-from conftest import patch_cli_calls
+from conftest import patch_cli_calls, run_context
 
 
 def _version(cmd):
@@ -37,14 +37,14 @@ def test_pi_installs_the_skill_and_passes_no_preload_flag(
     patch_cli_calls(monkeypatch, fake_run)
 
     PiHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Validate the spec",
-        skill_refs=refs,
-        model="claude-sonnet-4-6",
-        timeout=30,
-        isolated_home=str(tmp_path),
-        extra_path=[str(tmp_path / "bin")],
+        run_context(
+            prompt="Validate the spec",
+            skill_refs=refs,
+            model="claude-sonnet-4-6",
+            timeout=30,
+            isolated_home=str(tmp_path),
+            extra_path=[str(tmp_path / "bin")],
+        )
     )
 
     run_cmd = calls[1][0]
@@ -80,13 +80,12 @@ def test_pi_omits_model_and_skill_when_unspecified(monkeypatch, tmp_path) -> Non
     patch_cli_calls(monkeypatch, fake_run)
 
     PiHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Hello",
-        skill_refs=[],
-        model=None,
-        timeout=12,
-        isolated_home=str(tmp_path),
+        run_context(
+            prompt="Hello",
+            model=None,
+            timeout=12,
+            isolated_home=str(tmp_path),
+        )
     )
 
     run_cmd = calls[1][0]
@@ -139,13 +138,12 @@ def test_pi_json_stream_captures_tool_calls(monkeypatch, tmp_path) -> None:
     patch_cli_calls(monkeypatch, fake_run)
 
     result = PiHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Write a file",
-        skill_refs=[],
-        model=None,
-        timeout=12,
-        isolated_home=str(tmp_path),
+        run_context(
+            prompt="Write a file",
+            model=None,
+            timeout=12,
+            isolated_home=str(tmp_path),
+        )
     )
 
     assert result.final_output == "All done."
@@ -209,13 +207,12 @@ def test_pi_run_captures_token_usage_end_to_end(monkeypatch, tmp_path) -> None:
     patch_cli_calls(monkeypatch, fake_run)
 
     result = PiHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Write hello to a file",
-        skill_refs=[],
-        model=None,
-        timeout=12,
-        isolated_home=str(tmp_path),
+        run_context(
+            prompt="Write hello to a file",
+            model=None,
+            timeout=12,
+            isolated_home=str(tmp_path),
+        )
     )
 
     assert result.final_output == "Wrote hello to the file."
@@ -234,13 +231,12 @@ def test_pi_missing_cli_raises_configuration_error(monkeypatch, tmp_path) -> Non
 
     with pytest.raises(HarnessConfigurationError, match="pi CLI is not available"):
         PiHarness().run(
-            task_id="task-001",
-            attempt=1,
-            prompt="Hello",
-            skill_refs=[],
-            model=None,
-            timeout=12,
-            isolated_home=str(tmp_path),
+            run_context(
+                prompt="Hello",
+                model=None,
+                timeout=12,
+                isolated_home=str(tmp_path),
+            )
         )
 
 
@@ -257,13 +253,12 @@ def test_pi_auth_failure_raises_configuration_error(monkeypatch, tmp_path) -> No
 
     with pytest.raises(HarnessConfigurationError, match="authentication"):
         PiHarness().run(
-            task_id="task-001",
-            attempt=1,
-            prompt="Hello",
-            skill_refs=[],
-            model=None,
-            timeout=12,
-            isolated_home=str(tmp_path),
+            run_context(
+                prompt="Hello",
+                model=None,
+                timeout=12,
+                isolated_home=str(tmp_path),
+            )
         )
 
 

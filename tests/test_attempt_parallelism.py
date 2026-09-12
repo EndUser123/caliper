@@ -12,7 +12,7 @@ import threading
 
 import pytest
 
-from caliper.harness.base import AttemptResult, HarnessBackend
+from caliper.harness.base import AttemptResult, HarnessBackend, RunContext
 from caliper.judge.base import JudgeResult
 from caliper.runner import run
 from caliper.schema.results import Outcome
@@ -29,11 +29,9 @@ class BarrierHarness(HarnessBackend):
     def name(self) -> str:
         return "barrier"
 
-    def run(self, task_id: str, attempt: int, prompt: str, **kwargs) -> AttemptResult:
+    def run(self, ctx: RunContext) -> AttemptResult:
         self._barrier.wait()
         return AttemptResult(
-            task_id=task_id,
-            attempt=attempt,
             transcript=[],
             final_output="done",
             exit_code=0,
@@ -53,18 +51,16 @@ class PerTaskConcurrencyProbe(HarnessBackend):
     def name(self) -> str:
         return "probe"
 
-    def run(self, task_id: str, attempt: int, prompt: str, **kwargs) -> AttemptResult:
+    def run(self, ctx: RunContext) -> AttemptResult:
         with self._lock:
-            live = self._live.get(task_id, 0) + 1
-            self._live[task_id] = live
+            live = self._live.get(ctx.task_id, 0) + 1
+            self._live[ctx.task_id] = live
             self.peak_per_task = max(self.peak_per_task, live)
         try:
             # Long enough that a second attempt of the same task would be seen
             # overlapping this one if the scheduler allowed it.
             threading.Event().wait(0.05)
             return AttemptResult(
-                task_id=task_id,
-                attempt=attempt,
                 transcript=[],
                 final_output="",
                 exit_code=1,
@@ -73,10 +69,13 @@ class PerTaskConcurrencyProbe(HarnessBackend):
             )
         finally:
             with self._lock:
-                self._live[task_id] -= 1
+                self._live[ctx.task_id] -= 1
 
 
 class PassingJudge:
+    backend = "test"
+    model = None
+
     def evaluate(self, task, transcript, final_output, spec_dir) -> JudgeResult:
         return JudgeResult(passed=True, reasoning="ok")
 
@@ -204,11 +203,9 @@ class OrderProbe(HarnessBackend):
     def name(self) -> str:
         return "order"
 
-    def run(self, task_id: str, attempt: int, prompt: str, **kwargs) -> AttemptResult:
-        self.started.append((task_id, attempt))
+    def run(self, ctx: RunContext) -> AttemptResult:
+        self.started.append((ctx.task_id, ctx.attempt))
         return AttemptResult(
-            task_id=task_id,
-            attempt=attempt,
             transcript=[],
             final_output="done",
             exit_code=0,

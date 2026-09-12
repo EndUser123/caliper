@@ -9,6 +9,7 @@ from caliper.harness.base import (
     CliHarness,
     HarnessConfigurationError,
     ProcessResult,
+    PromptCall,
     RunContext,
 )
 from caliper.schema.results import TokenUsage
@@ -72,9 +73,9 @@ class PiHarness(CliHarness):
     def _agent_dir(ctx: RunContext) -> Path:
         """The per-attempt config dir pi is pointed at via PI_CODING_AGENT_DIR.
 
-        Derived from the isolated home rather than stashed in ``ctx.extras``:
-        it is a function of the context, so there is nothing for a hook to
-        remember between them.
+        Derived from the isolated home rather than stashed for a later hook to
+        find: it is a function of the context, so there is nothing to remember
+        between them (docs/adr/0024-a-seam-carries-only-what-its-readers-use.md).
         """
         return Path(ctx.isolated_home) / ".pi" / "agent"
 
@@ -222,9 +223,7 @@ class PiHarness(CliHarness):
 
     # --- bare prompt call (the judge's half of the seam) -------------------
 
-    def _prompt_command(
-        self, prompt: str, model: str | None, extras: dict
-    ) -> tuple[list[str], str | None, Callable[[], None] | None]:
+    def _prompt_command(self, prompt: str, model: str | None) -> PromptCall:
         pi = self.cli_path()
         if not pi:
             raise HarnessConfigurationError("pi CLI not found")
@@ -235,7 +234,7 @@ class PiHarness(CliHarness):
         cmd.append(prompt)
         # stdin None → the template closes it (DEVNULL): in --print mode pi
         # otherwise blocks reading stdin and hangs until timeout.
-        return cmd, None, None
+        return PromptCall(cmd)
 
     def _prompt_text(self, proc: ProcessResult) -> str:
         # The answer is the last assistant message of pi's JSON event stream —

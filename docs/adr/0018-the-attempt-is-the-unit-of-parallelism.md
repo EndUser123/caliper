@@ -86,7 +86,11 @@ also fixes a latent leak — a timed-out agent used to orphan the tools it had
 spawned. The registry of live processes is process-global state
 (`caliper/cancel.py`), deliberately: the signal it answers is process-global,
 and threading a token through `HarnessBackend.run` would widen that narrow seam
-([0003](0003-cli-agent-backends-only.md)) for a fact no backend varies.
+([0003](0003-cli-agent-backends-only.md)) for a fact no backend varies. *(The
+seam later became `run(ctx)` — see
+[0023](0023-the-run-seam-takes-one-context.md). The test is unchanged: a token
+would be a new field on `RunContext`, which is the same widening it was as a new
+parameter.)*
 
 Higher real concurrency also means more upstream throttling, which currently
 lands as `infra_error` — unusable attempts that cost money and measure nothing.

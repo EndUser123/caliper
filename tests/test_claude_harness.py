@@ -58,14 +58,14 @@ def test_claude_harness_accepts_runner_contract_with_extra_path(
     patch_cli_calls(monkeypatch, fake_run)
 
     result = ClaudeCodeHarness(model="claude-test").run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Review the diff",
-        skill_refs=refs,
-        model=None,
-        timeout=30,
-        isolated_home=str(tmp_path / "home"),
-        extra_path=[str(tmp_path / "bin")],
+        run_context(
+            prompt="Review the diff",
+            skill_refs=refs,
+            model=None,
+            timeout=30,
+            isolated_home=str(tmp_path / "home"),
+            extra_path=[str(tmp_path / "bin")],
+        )
     )
 
     assert result.exit_code == 0
@@ -108,14 +108,13 @@ def test_claude_harness_reports_cli_startup_crash_before_auth(
 
     with pytest.raises(HarnessConfigurationError) as exc:
         ClaudeCodeHarness().run(
-            task_id="task-001",
-            attempt=1,
-            prompt="hello",
-            skill_refs=[],
-            model=None,
-            timeout=30,
-            isolated_home=str(tmp_path / "home"),
-            extra_path=[],
+            run_context(
+                prompt="hello",
+                model=None,
+                timeout=30,
+                isolated_home=str(tmp_path / "home"),
+                extra_path=[],
+            )
         )
 
     message = str(exc.value)
@@ -164,21 +163,20 @@ def test_claude_harness_materializes_mcp_config(monkeypatch, tmp_path) -> None:
     home.mkdir()
 
     ClaudeCodeHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="p",
-        skill_refs=[],
-        model=None,
-        timeout=30,
-        isolated_home=str(home),
-        extra_path=[],
-        mcp_servers={
-            "echo": McpServer(
-                command="python3",
-                args=["s.py"],
-                env={"API_TOKEN": "${MCP_API_TOKEN}"},
-            )
-        },
+        run_context(
+            prompt="p",
+            model=None,
+            timeout=30,
+            isolated_home=str(home),
+            extra_path=[],
+            mcp_servers={
+                "echo": McpServer(
+                    command="python3",
+                    args=["s.py"],
+                    env={"API_TOKEN": "${MCP_API_TOKEN}"},
+                )
+            },
+        )
     )
 
     cmd = captured["cmd"]
@@ -214,21 +212,20 @@ def test_claude_harness_materializes_remote_mcp_config(monkeypatch, tmp_path) ->
     home.mkdir()
 
     ClaudeCodeHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="p",
-        skill_refs=[],
-        model=None,
-        timeout=30,
-        isolated_home=str(home),
-        extra_path=[],
-        mcp_servers={
-            "gdrive": McpServer(
-                type="http",
-                url="https://mcp.example.com/gdrive",
-                headers={"Authorization": "Bearer ${GDRIVE_TOKEN}"},
-            )
-        },
+        run_context(
+            prompt="p",
+            model=None,
+            timeout=30,
+            isolated_home=str(home),
+            extra_path=[],
+            mcp_servers={
+                "gdrive": McpServer(
+                    type="http",
+                    url="https://mcp.example.com/gdrive",
+                    headers={"Authorization": "Bearer ${GDRIVE_TOKEN}"},
+                )
+            },
+        )
     )
 
     # Emitted in Claude Code's remote shape, with the auth header resolved.
@@ -261,21 +258,20 @@ def test_claude_harness_errors_on_unset_remote_header_var(
 
     with pytest.raises(HarnessConfigurationError, match="GDRIVE_TOKEN"):
         ClaudeCodeHarness().run(
-            task_id="task-001",
-            attempt=1,
-            prompt="p",
-            skill_refs=[],
-            model=None,
-            timeout=30,
-            isolated_home=str(home),
-            extra_path=[],
-            mcp_servers={
-                "gdrive": McpServer(
-                    type="http",
-                    url="https://mcp.example.com/gdrive",
-                    headers={"Authorization": "Bearer ${GDRIVE_TOKEN}"},
-                )
-            },
+            run_context(
+                prompt="p",
+                model=None,
+                timeout=30,
+                isolated_home=str(home),
+                extra_path=[],
+                mcp_servers={
+                    "gdrive": McpServer(
+                        type="http",
+                        url="https://mcp.example.com/gdrive",
+                        headers={"Authorization": "Bearer ${GDRIVE_TOKEN}"},
+                    )
+                },
+            )
         )
 
 
@@ -293,14 +289,13 @@ def test_claude_harness_omits_mcp_flags_when_no_servers(monkeypatch, tmp_path) -
     home.mkdir()
 
     ClaudeCodeHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="p",
-        skill_refs=[],
-        model=None,
-        timeout=30,
-        isolated_home=str(home),
-        extra_path=[],
+        run_context(
+            prompt="p",
+            model=None,
+            timeout=30,
+            isolated_home=str(home),
+            extra_path=[],
+        )
     )
 
     assert "--mcp-config" not in captured["cmd"]
@@ -322,19 +317,18 @@ def test_claude_harness_errors_on_unset_mcp_env_var(monkeypatch, tmp_path) -> No
 
     with pytest.raises(HarnessConfigurationError, match="MCP_API_TOKEN"):
         ClaudeCodeHarness().run(
-            task_id="task-001",
-            attempt=1,
-            prompt="p",
-            skill_refs=[],
-            model=None,
-            timeout=30,
-            isolated_home=str(home),
-            extra_path=[],
-            mcp_servers={
-                "echo": McpServer(
-                    command="python3",
-                    args=[],
-                    env={"API_TOKEN": "${MCP_API_TOKEN}"},
-                )
-            },
+            run_context(
+                prompt="p",
+                model=None,
+                timeout=30,
+                isolated_home=str(home),
+                extra_path=[],
+                mcp_servers={
+                    "echo": McpServer(
+                        command="python3",
+                        args=[],
+                        env={"API_TOKEN": "${MCP_API_TOKEN}"},
+                    )
+                },
+            )
         )
