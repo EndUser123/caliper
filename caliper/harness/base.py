@@ -226,7 +226,8 @@ class HarnessBackend(ABC):
         :class:`AttemptResult` out, and nothing about scoring, judging or
         threads crosses it in either direction. The caller builds a fresh
         context per invocation — a retried attempt is a second invocation, and
-        ``ctx.extras`` is scratch that must not survive into it (docs/adr/0019).
+        must not start from what the failed one left behind (docs/adr/0019,
+        docs/adr/0023).
         """
         ...
 

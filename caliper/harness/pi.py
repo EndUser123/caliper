@@ -73,9 +73,9 @@ class PiHarness(CliHarness):
     def _agent_dir(ctx: RunContext) -> Path:
         """The per-attempt config dir pi is pointed at via PI_CODING_AGENT_DIR.
 
-        Derived from the isolated home rather than stashed in ``ctx.extras``:
-        it is a function of the context, so there is nothing for a hook to
-        remember between them.
+        Derived from the isolated home rather than stashed for a later hook to
+        find: it is a function of the context, so there is nothing to remember
+        between them (docs/adr/0024-a-seam-carries-only-what-its-readers-use.md).
         """
         return Path(ctx.isolated_home) / ".pi" / "agent"
 
