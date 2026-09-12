@@ -12,7 +12,12 @@ from pathlib import Path
 import pytest
 
 from caliper import cancel
-from caliper.harness.base import AttemptResult, ConversationTurn, HarnessBackend
+from caliper.harness.base import (
+    AttemptResult,
+    ConversationTurn,
+    HarnessBackend,
+    RunContext,
+)
 from caliper.judge.base import JudgeResult
 from caliper.retry import (
     RetryPolicy,
@@ -201,7 +206,7 @@ class ThrottleThenPassHarness(HarnessBackend):
     def name(self) -> str:
         return "throttling"
 
-    def run(self, task_id: str, attempt: int, prompt: str, **kwargs) -> AttemptResult:
+    def run(self, ctx: RunContext) -> AttemptResult:
         self.invocations += 1
         if self.invocations % 2 == 1:
             return _result(**THROTTLED)
@@ -213,7 +218,7 @@ class CappedHarness(HarnessBackend):
     def name(self) -> str:
         return "capped"
 
-    def run(self, task_id: str, attempt: int, prompt: str, **kwargs) -> AttemptResult:
+    def run(self, ctx: RunContext) -> AttemptResult:
         return _result(**CAPPED)
 
 
@@ -297,7 +302,7 @@ class AlwaysThrottledHarness(HarnessBackend):
     def name(self) -> str:
         return "throttled"
 
-    def run(self, task_id: str, attempt: int, prompt: str, **kwargs) -> AttemptResult:
+    def run(self, ctx: RunContext) -> AttemptResult:
         self.invocations += 1
         return _result(**THROTTLED)
 

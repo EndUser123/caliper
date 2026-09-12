@@ -15,6 +15,7 @@ from caliper.attempt import assemble_attempt
 from caliper.harness.base import (
     HarnessBackend,
     HarnessConfigurationError,
+    RunContext,
 )
 from caliper.judge.base import Judge
 from caliper.retry import SpendingCapReached, invoke_with_retry
@@ -408,21 +409,28 @@ def _run_attempt(task: TaskSpec, attempt: int, env: _RunEnv) -> AttemptRecord | 
         # The neighbourhood is *installed* by the harness at its own skills root
         # and never preloaded. ``env.skill_refs`` is already the ablated set.
         def invoke():
+            # Built inside the closure, so a retried attempt gets its own
+            # context rather than the previous invocation's scratch
+            # (docs/adr/0019 — the attempt is the shot, not the spawn).
             return env.harness.run(
-                task_id=task.id,
-                attempt=attempt,
-                prompt=task.prompt,
-                skill_refs=env.skill_refs,
-                # None → the harness uses the model it was constructed with; the
-                # engine is resolved once at the run seam (ADR 0004), not per spec.
-                model=None,
-                timeout=env.timeout,
-                isolated_home=tmp_dir,
-                extra_path=resolved_extra_path,
-                # Declared MCP servers are the agent's tool environment for the
-                # eval; the backend materializes them. ``None`` when none declared.
-                mcp_servers=dict(spec.mcp) or None,
-                forbidden_files=list(spec.sandbox.forbidden_files),
+                RunContext(
+                    task_id=task.id,
+                    attempt=attempt,
+                    prompt=task.prompt,
+                    skill_refs=env.skill_refs,
+                    # None → the harness uses the model it was constructed with;
+                    # the engine is resolved once at the run seam (ADR 0004),
+                    # not per spec.
+                    model=None,
+                    timeout=env.timeout,
+                    isolated_home=tmp_dir,
+                    extra_path=resolved_extra_path,
+                    # Declared MCP servers are the agent's tool environment for
+                    # the eval; the backend materializes them. ``None`` when
+                    # none declared.
+                    mcp_servers=dict(spec.mcp) or None,
+                    forbidden_files=list(spec.sandbox.forbidden_files),
+                )
             )
 
         # A throttled invocation measured nothing, so it is retried rather than

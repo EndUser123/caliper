@@ -11,7 +11,7 @@ from caliper.harness.hermes import HermesHarness
 from caliper.schema.spec import McpServer
 from caliper.skills import resolve_skills
 
-from conftest import patch_cli_calls
+from conftest import patch_cli_calls, run_context
 
 
 def _version(cmd):
@@ -56,13 +56,12 @@ def test_hermes_seeds_only_neutral_config_and_ignores_rules(
     _install(monkeypatch, home, fake_run)
 
     HermesHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Hello",
-        skill_refs=[],
-        model=None,
-        timeout=30,
-        isolated_home=str(iso),
+        run_context(
+            prompt="Hello",
+            model=None,
+            timeout=30,
+            isolated_home=str(iso),
+        )
     )
 
     seeded = iso / ".hermes"
@@ -106,13 +105,13 @@ def test_hermes_installs_the_skill_without_preloading_it(monkeypatch, tmp_path) 
     _install(monkeypatch, home, fake_run)
 
     HermesHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Do it",
-        skill_refs=refs,
-        model=None,
-        timeout=30,
-        isolated_home=str(iso),
+        run_context(
+            prompt="Do it",
+            skill_refs=refs,
+            model=None,
+            timeout=30,
+            isolated_home=str(iso),
+        )
     )
 
     installed = iso / ".hermes" / "skills" / "my-skill"
@@ -147,13 +146,12 @@ def test_hermes_no_skills_flag_without_skill(monkeypatch, tmp_path) -> None:
     )
 
     HermesHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Hello",
-        skill_refs=[],
-        model=None,
-        timeout=30,
-        isolated_home=str(iso),
+        run_context(
+            prompt="Hello",
+            model=None,
+            timeout=30,
+            isolated_home=str(iso),
+        )
     )
 
     script = result_calls[1][0][2]
@@ -186,14 +184,13 @@ def _run_hermes_mcp(monkeypatch, tmp_path, mcp_servers, *, home=None):
 
     _install(monkeypatch, home, fake_run)
     HermesHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Hello",
-        skill_refs=[],
-        model=None,
-        timeout=30,
-        isolated_home=str(iso),
-        mcp_servers=mcp_servers,
+        run_context(
+            prompt="Hello",
+            model=None,
+            timeout=30,
+            isolated_home=str(iso),
+            mcp_servers=mcp_servers,
+        )
     )
     seeded = iso / ".hermes" / "config.yaml"
     return yaml.safe_load(seeded.read_text()), seeded
@@ -301,13 +298,12 @@ def test_hermes_passes_yolo_to_bypass_approval(monkeypatch, tmp_path) -> None:
 
     _install(monkeypatch, home, fake_run)
     HermesHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Hello",
-        skill_refs=[],
-        model=None,
-        timeout=30,
-        isolated_home=str(iso),
+        run_context(
+            prompt="Hello",
+            model=None,
+            timeout=30,
+            isolated_home=str(iso),
+        )
     )
     assert "--yolo" in calls[1][0][2]
 
@@ -331,13 +327,12 @@ def test_hermes_diagnoses_model_selection_error(monkeypatch, tmp_path) -> None:
     _install(monkeypatch, home, fake_run)
     with pytest.raises(HarnessConfigurationError, match="hermes model"):
         HermesHarness().run(
-            task_id="task-001",
-            attempt=1,
-            prompt="Hello",
-            skill_refs=[],
-            model=None,
-            timeout=12,
-            isolated_home=str(iso),
+            run_context(
+                prompt="Hello",
+                model=None,
+                timeout=12,
+                isolated_home=str(iso),
+            )
         )
 
 
@@ -386,13 +381,12 @@ def test_hermes_parses_export_trajectory(monkeypatch, tmp_path) -> None:
     _install(monkeypatch, home, fake_run)
 
     result = HermesHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Run echo",
-        skill_refs=[],
-        model=None,
-        timeout=30,
-        isolated_home=str(iso),
+        run_context(
+            prompt="Run echo",
+            model=None,
+            timeout=30,
+            isolated_home=str(iso),
+        )
     )
 
     assert result.final_output == "Done: HELLO123"
@@ -454,13 +448,12 @@ def test_hermes_run_captures_token_usage_end_to_end(monkeypatch, tmp_path) -> No
     _install(monkeypatch, home, fake_run)
 
     result = HermesHarness().run(
-        task_id="task-001",
-        attempt=1,
-        prompt="Write hello to a file",
-        skill_refs=[],
-        model=None,
-        timeout=30,
-        isolated_home=str(iso),
+        run_context(
+            prompt="Write hello to a file",
+            model=None,
+            timeout=30,
+            isolated_home=str(iso),
+        )
     )
 
     assert result.final_output == "Wrote hello."
@@ -479,13 +472,12 @@ def test_hermes_missing_cli_raises_configuration_error(monkeypatch, tmp_path) ->
 
     with pytest.raises(HarnessConfigurationError, match="hermes CLI is not available"):
         HermesHarness().run(
-            task_id="task-001",
-            attempt=1,
-            prompt="Hello",
-            skill_refs=[],
-            model=None,
-            timeout=12,
-            isolated_home=str(tmp_path),
+            run_context(
+                prompt="Hello",
+                model=None,
+                timeout=12,
+                isolated_home=str(tmp_path),
+            )
         )
 
 
@@ -507,11 +499,10 @@ def test_hermes_credit_failure_raises_configuration_error(
 
     with pytest.raises(HarnessConfigurationError, match="provider/credential"):
         HermesHarness().run(
-            task_id="task-001",
-            attempt=1,
-            prompt="Hello",
-            skill_refs=[],
-            model=None,
-            timeout=12,
-            isolated_home=str(iso),
+            run_context(
+                prompt="Hello",
+                model=None,
+                timeout=12,
+                isolated_home=str(iso),
+            )
         )

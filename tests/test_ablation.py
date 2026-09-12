@@ -13,7 +13,12 @@ from datetime import datetime, timezone
 import pytest
 
 from caliper.compare import diff_runs
-from caliper.harness.base import AttemptResult, ConversationTurn, HarnessBackend
+from caliper.harness.base import (
+    AttemptResult,
+    ConversationTurn,
+    HarnessBackend,
+    RunContext,
+)
 from caliper.judge.base import JudgeResult
 from caliper.runner import run
 from caliper.schema.results import (
@@ -43,30 +48,19 @@ class RecordingHarness(HarnessBackend):
     def name(self) -> str:
         return "recording"
 
-    def run(
-        self,
-        task_id,
-        attempt,
-        prompt,
-        *,
-        skill_refs,
-        model,
-        timeout,
-        isolated_home,
-        extra_path=None,
-        mcp_servers=None,
-        forbidden_files=None,
-    ) -> AttemptResult:
-        self.installed.append([ref.name for ref in skill_refs])
+    def run(self, ctx: RunContext) -> AttemptResult:
+        self.installed.append([ref.name for ref in ctx.skill_refs])
         return AttemptResult(
-            task_id=task_id,
-            attempt=attempt,
+            task_id=ctx.task_id,
+            attempt=ctx.attempt,
             transcript=[
                 ConversationTurn(
                     role="tool_use",
                     content="[tool: Read]",
                     tool_name="Read",
-                    tool_input={"file_path": f"{isolated_home}/skills/keeper/SKILL.md"},
+                    tool_input={
+                        "file_path": f"{ctx.isolated_home}/skills/keeper/SKILL.md"
+                    },
                 )
             ],
             final_output="done",

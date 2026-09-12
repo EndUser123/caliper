@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from caliper.harness.base import AttemptResult, ConversationTurn, HarnessBackend
+from caliper.harness.base import (
+    AttemptResult,
+    ConversationTurn,
+    HarnessBackend,
+    RunContext,
+)
 from caliper.judge.base import JudgeResult
 from caliper.runner import run
 from caliper.schema.results import Outcome
@@ -12,23 +17,10 @@ class FailingHarness(HarnessBackend):
     def name(self) -> str:
         return "failing"
 
-    def run(
-        self,
-        task_id: str,
-        attempt: int,
-        prompt: str,
-        *,
-        skill_refs: list,
-        model: str | None,
-        timeout: int,
-        isolated_home: str,
-        extra_path: list[str] | None = None,
-        mcp_servers: dict | None = None,
-        forbidden_files: list | None = None,
-    ) -> AttemptResult:
+    def run(self, ctx: RunContext) -> AttemptResult:
         return AttemptResult(
-            task_id=task_id,
-            attempt=attempt,
+            task_id=ctx.task_id,
+            attempt=ctx.attempt,
             transcript=[],
             final_output="",
             exit_code=1,
@@ -41,31 +33,9 @@ class InfraErrorHarness(FailingHarness):
     def __init__(self) -> None:
         self.attempts: list[int] = []
 
-    def run(
-        self,
-        task_id: str,
-        attempt: int,
-        prompt: str,
-        *,
-        skill_refs: list,
-        model: str | None,
-        timeout: int,
-        isolated_home: str,
-        extra_path: list[str] | None = None,
-        mcp_servers: dict | None = None,
-        forbidden_files: list | None = None,
-    ) -> AttemptResult:
-        self.attempts.append(attempt)
-        return super().run(
-            task_id=task_id,
-            attempt=attempt,
-            prompt=prompt,
-            skill_refs=skill_refs,
-            model=model,
-            timeout=timeout,
-            isolated_home=isolated_home,
-            extra_path=extra_path,
-        )
+    def run(self, ctx: RunContext) -> AttemptResult:
+        self.attempts.append(ctx.attempt)
+        return super().run(ctx)
 
 
 class MixedOutcomeHarness(HarnessBackend):
@@ -76,25 +46,12 @@ class MixedOutcomeHarness(HarnessBackend):
     def name(self) -> str:
         return "mixed"
 
-    def run(
-        self,
-        task_id: str,
-        attempt: int,
-        prompt: str,
-        *,
-        skill_refs: list,
-        model: str | None,
-        timeout: int,
-        isolated_home: str,
-        extra_path: list[str] | None = None,
-        mcp_servers: dict | None = None,
-        forbidden_files: list | None = None,
-    ) -> AttemptResult:
-        self.attempts.append(attempt)
-        if attempt in (1, 3):
+    def run(self, ctx: RunContext) -> AttemptResult:
+        self.attempts.append(ctx.attempt)
+        if ctx.attempt in (1, 3):
             return AttemptResult(
-                task_id=task_id,
-                attempt=attempt,
+                task_id=ctx.task_id,
+                attempt=ctx.attempt,
                 transcript=[],
                 final_output="",
                 exit_code=1,
@@ -102,8 +59,8 @@ class MixedOutcomeHarness(HarnessBackend):
                 error="agent failed",
             )
         return AttemptResult(
-            task_id=task_id,
-            attempt=attempt,
+            task_id=ctx.task_id,
+            attempt=ctx.attempt,
             transcript=[],
             final_output="judge this",
             exit_code=0,
@@ -276,23 +233,10 @@ class ResolvedModelHarness(HarnessBackend):
     def name(self) -> str:
         return "resolving"
 
-    def run(
-        self,
-        task_id: str,
-        attempt: int,
-        prompt: str,
-        *,
-        skill_refs: list,
-        model: str | None,
-        timeout: int,
-        isolated_home: str,
-        extra_path: list[str] | None = None,
-        mcp_servers: dict | None = None,
-        forbidden_files: list | None = None,
-    ) -> AttemptResult:
+    def run(self, ctx: RunContext) -> AttemptResult:
         return AttemptResult(
-            task_id=task_id,
-            attempt=attempt,
+            task_id=ctx.task_id,
+            attempt=ctx.attempt,
             transcript=[],
             final_output="done",
             exit_code=0,
@@ -380,23 +324,10 @@ class TranscriptHarness(HarnessBackend):
     def name(self) -> str:
         return "transcript"
 
-    def run(
-        self,
-        task_id: str,
-        attempt: int,
-        prompt: str,
-        *,
-        skill_refs: list,
-        model: str | None,
-        timeout: int,
-        isolated_home: str,
-        extra_path: list[str] | None = None,
-        mcp_servers: dict | None = None,
-        forbidden_files: list | None = None,
-    ) -> AttemptResult:
+    def run(self, ctx: RunContext) -> AttemptResult:
         return AttemptResult(
-            task_id=task_id,
-            attempt=attempt,
+            task_id=ctx.task_id,
+            attempt=ctx.attempt,
             transcript=[
                 ConversationTurn(role="assistant", content="calling tool"),
                 ConversationTurn(

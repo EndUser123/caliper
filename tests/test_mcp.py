@@ -7,6 +7,7 @@ from caliper.harness.base import (
     AttemptResult,
     HarnessBackend,
     HarnessConfigurationError,
+    RunContext,
 )
 from caliper.harness.mcp import resolve_servers
 from caliper.judge.base import JudgeResult
@@ -257,11 +258,11 @@ class _McpHarness(HarnessBackend):
     def name(self) -> str:
         return "yesmcp"
 
-    def run(self, *args, mcp_servers: dict | None = None, **kwargs) -> AttemptResult:
-        self.seen = mcp_servers
+    def run(self, ctx: RunContext) -> AttemptResult:
+        self.seen = ctx.mcp_servers
         return AttemptResult(
-            task_id=kwargs.get("task_id", "task-001"),
-            attempt=kwargs.get("attempt", 1),
+            task_id=ctx.task_id,
+            attempt=ctx.attempt,
             transcript=[],
             final_output="ok",
             exit_code=0,

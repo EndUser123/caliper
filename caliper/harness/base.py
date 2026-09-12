@@ -95,6 +95,17 @@ class RunContext:
     mcp_servers: dict[str, McpServer] | None = None
     extras: dict = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        # The context owns its lists. The runner holds one neighbourhood for the
+        # whole run and hands it to every attempt, and the harness object is
+        # shared across worker threads — so a backend that appended to what it
+        # was given would be editing the next attempt's inputs, on another
+        # thread. Copied here rather than at each call site: the guarantee
+        # belongs to the value that crosses the seam, not to whoever built it.
+        self.skill_refs = list(self.skill_refs)
+        self.extra_path = list(self.extra_path)
+        self.forbidden_files = list(self.forbidden_files)
+
 
 @dataclass
 class ProcessResult:
@@ -174,20 +185,16 @@ class HarnessBackend(ABC):
     activation_tool_names: frozenset[str] = frozenset()
 
     @abstractmethod
-    def run(
-        self,
-        task_id: str,
-        attempt: int,
-        prompt: str,
-        *,
-        skill_refs: list[SkillRef],
-        model: str | None,
-        timeout: int,
-        isolated_home: str,
-        extra_path: list[str] | None = None,
-        mcp_servers: dict[str, McpServer] | None = None,
-        forbidden_files: list[str] | None = None,
-    ) -> AttemptResult: ...
+    def run(self, ctx: RunContext) -> AttemptResult:
+        """Run one attempt and report what came back.
+
+        The narrow seam (docs/adr/0003): a :class:`RunContext` in, an
+        :class:`AttemptResult` out, and nothing about scoring, judging or
+        threads crosses it in either direction. The caller builds a fresh
+        context per invocation — a retried attempt is a second invocation, and
+        ``ctx.extras`` is scratch that must not survive into it (docs/adr/0019).
+        """
+        ...
 
     def run_prompt(
         self,
@@ -225,32 +232,13 @@ class CliHarness(HarnessBackend):
     docs/adr/0020-a-backend-declares-its-chores-rather-than-performing-them.md.
     """
 
-    def run(
-        self,
-        task_id: str,
-        attempt: int,
-        prompt: str,
-        *,
-        skill_refs: list[SkillRef],
-        model: str | None,
-        timeout: int,
-        isolated_home: str,
-        extra_path: list[str] | None = None,
-        mcp_servers: dict[str, McpServer] | None = None,
-        forbidden_files: list[str] | None = None,
-    ) -> AttemptResult:
-        ctx = RunContext(
-            task_id=task_id,
-            attempt=attempt,
-            prompt=prompt,
-            skill_refs=list(skill_refs),
-            model=model or self._model,
-            timeout=timeout,
-            isolated_home=isolated_home,
-            extra_path=list(extra_path or []),
-            mcp_servers=mcp_servers,
-            forbidden_files=list(forbidden_files or []),
-        )
+    def run(self, ctx: RunContext) -> AttemptResult:
+        # The one fact the backend contributes to its own context: a request
+        # naming no model means "whatever engine this backend was built with"
+        # (docs/adr/0004). Settled once, here, so every hook below reads a
+        # ``ctx.model`` that is already the model the agent will actually run.
+        if ctx.model is None:
+            ctx.model = self._model
 
         self._ensure_ready(ctx)
         self._seed_home(ctx)

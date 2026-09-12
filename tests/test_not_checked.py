@@ -6,7 +6,12 @@ from typer.testing import CliRunner
 
 from caliper.commands.list_cmd import _score_cell
 from caliper.reporter import RULE_GLYPH, UNUSABLE_GLYPH
-from caliper.harness.base import AttemptResult, ConversationTurn, HarnessBackend
+from caliper.harness.base import (
+    AttemptResult,
+    ConversationTurn,
+    HarnessBackend,
+    RunContext,
+)
 from caliper.judge.base import JudgeResult
 from caliper.outcome import classify_outcome
 from caliper.reporter import _status_cell
@@ -124,23 +129,10 @@ class CleanHarness(HarnessBackend):
     def name(self) -> str:
         return "clean"
 
-    def run(
-        self,
-        task_id: str,
-        attempt: int,
-        prompt: str,
-        *,
-        skill_refs: list,
-        model: str | None,
-        timeout: int,
-        isolated_home: str,
-        extra_path: list[str] | None = None,
-        mcp_servers: dict | None = None,
-        forbidden_files: list | None = None,
-    ) -> AttemptResult:
+    def run(self, ctx: RunContext) -> AttemptResult:
         return AttemptResult(
-            task_id=task_id,
-            attempt=attempt,
+            task_id=ctx.task_id,
+            attempt=ctx.attempt,
             transcript=[ConversationTurn(role="assistant", content="Paris.")],
             final_output="Paris.",
             exit_code=0,
@@ -290,23 +282,10 @@ class TimingOutHarness(HarnessBackend):
     def name(self) -> str:
         return "timeout"
 
-    def run(
-        self,
-        task_id,
-        attempt,
-        prompt,
-        *,
-        skill_refs,
-        model,
-        timeout,
-        isolated_home,
-        extra_path=None,
-        mcp_servers=None,
-        forbidden_files=None,
-    ) -> AttemptResult:
+    def run(self, ctx: RunContext) -> AttemptResult:
         return AttemptResult(
-            task_id=task_id,
-            attempt=attempt,
+            task_id=ctx.task_id,
+            attempt=ctx.attempt,
             transcript=[],
             final_output="",
             exit_code=124,
