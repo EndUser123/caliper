@@ -32,8 +32,6 @@ class BarrierHarness(HarnessBackend):
     def run(self, ctx: RunContext) -> AttemptResult:
         self._barrier.wait()
         return AttemptResult(
-            task_id=ctx.task_id,
-            attempt=ctx.attempt,
             transcript=[],
             final_output="done",
             exit_code=0,
@@ -63,8 +61,6 @@ class PerTaskConcurrencyProbe(HarnessBackend):
             # overlapping this one if the scheduler allowed it.
             threading.Event().wait(0.05)
             return AttemptResult(
-                task_id=ctx.task_id,
-                attempt=ctx.attempt,
                 transcript=[],
                 final_output="",
                 exit_code=1,
@@ -77,6 +73,9 @@ class PerTaskConcurrencyProbe(HarnessBackend):
 
 
 class PassingJudge:
+    backend = "test"
+    model = None
+
     def evaluate(self, task, transcript, final_output, spec_dir) -> JudgeResult:
         return JudgeResult(passed=True, reasoning="ok")
 
@@ -207,8 +206,6 @@ class OrderProbe(HarnessBackend):
     def run(self, ctx: RunContext) -> AttemptResult:
         self.started.append((ctx.task_id, ctx.attempt))
         return AttemptResult(
-            task_id=ctx.task_id,
-            attempt=ctx.attempt,
             transcript=[],
             final_output="done",
             exit_code=0,

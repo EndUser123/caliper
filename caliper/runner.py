@@ -29,7 +29,7 @@ from caliper.schema.results import (
     RunResults,
     TaskResult,
 )
-from caliper.schema.spec import DEFAULT_BACKEND, EvalSpec, TaskSpec, spec_name
+from caliper.schema.spec import EvalSpec, TaskSpec, spec_name
 from caliper.skillfetch import SkillFetcher
 from caliper.skills import (
     SkillRef,
@@ -118,10 +118,6 @@ def run(
     spec_path: Path,
     harness: HarnessBackend,
     judge: Judge,
-    backend: str = DEFAULT_BACKEND,
-    model: str | None = None,
-    judge_backend: str | None = None,
-    judge_model: str | None = None,
     k: int = 3,
     workers: int = 4,
     timeout: int = 120,
@@ -150,11 +146,11 @@ def run(
         # absent.
         if harness.mcp_unsupported_hint:
             raise HarnessConfigurationError(
-                f"This eval declares mcp: servers, but the '{backend}' backend "
-                "does not support MCP.\n\n" + harness.mcp_unsupported_hint
+                f"This eval declares mcp: servers, but the '{harness.name}' "
+                "backend does not support MCP.\n\n" + harness.mcp_unsupported_hint
             )
         raise HarnessConfigurationError(
-            f"This eval declares mcp: servers, but the '{backend}' backend does "
+            f"This eval declares mcp: servers, but the '{harness.name}' backend does "
             "not support MCP yet. Only the 'claude-code' backend implements mcp: "
             "in this release.\n\n"
             "Re-run with --model claude-code (the default engine), or remove the "
@@ -255,16 +251,19 @@ def run(
             spec=spec_name(spec_path),
             timestamp=datetime.now(tz=timezone.utc),
             k=k,
-            backend=backend,
-            # Prefer the explicitly requested model; otherwise fall back to the
-            # concrete model an attempt resolved (e.g. from hermes' export), so a
-            # default-model run still records what actually ran.
-            model=model or (env.resolved_models[0] if env.resolved_models else None),
-            judge_backend=judge_backend,
-            # Prefer the explicitly requested judge model; else the concrete model
-            # an autorater reported (e.g. claude-code). Stays None for assert-only
-            # runs, where no LLM judge ran.
-            judge_model=judge_model
+            # The engine is whatever the harness and judge were built with
+            # (docs/adr/0004): asked of them, not passed in beside them.
+            backend=harness.name,
+            # Prefer the model the backend was built with; otherwise fall back to
+            # the concrete model an attempt resolved (e.g. from hermes' export),
+            # so a default-model run still records what actually ran.
+            model=harness.model
+            or (env.resolved_models[0] if env.resolved_models else None),
+            judge_backend=judge.backend,
+            # Prefer the judge's own model; else the concrete model an autorater
+            # reported (e.g. claude-code). Stays None for assert-only runs, where
+            # no LLM judge ran.
+            judge_model=judge.model
             or (env.judge_models[0] if env.judge_models else None),
             era=ERA_INSTALL_AND_DISCOVER,
             ablated=ablated,

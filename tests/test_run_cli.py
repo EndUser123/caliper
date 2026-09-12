@@ -91,11 +91,6 @@ tasks:
     # Defaults flow through unchanged when the flag is omitted
     assert calls["timeout"] == 120
     assert calls["ablate"] == []
-    # Engine is resolved at the run seam and defaults to claude-code (ADR 0004)
-    assert calls["backend"] == "claude-code"
-    assert calls["model"] is None
-    assert calls["judge_backend"] == "claude-code"
-    assert calls["judge_model"] is None
 
 
 def test_run_cli_resolves_backend_and_judge_model_targets(
@@ -117,8 +112,8 @@ def test_run_cli_resolves_backend_and_judge_model_targets(
                 spec="sample",
                 timestamp=datetime(2026, 7, 3, tzinfo=timezone.utc),
                 k=kwargs["k"],
-                backend=kwargs["backend"],
-                model=kwargs["model"],
+                backend=harness_args["backend"],
+                model=harness_args["model"],
             ),
             skill_snapshots=[],
             task_results=[],

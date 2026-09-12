@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
@@ -34,16 +34,19 @@ class ConversationTurn:
 
 @dataclass
 class AttemptResult:
-    task_id: str
-    attempt: int
+    """What one invocation of the agent produced, and nothing about what it means.
+
+    Deliberately carries no identity (the runner knows which attempt it asked
+    for) and no verdict (cheat detection and grading happen on the other side
+    of the seam, in :mod:`caliper.attempt`).
+    """
+
     transcript: list[ConversationTurn]
     final_output: str
     exit_code: int
     duration_seconds: float
     error: str | None = None
     timed_out: bool = False
-    cheated: bool = False
-    cheat_evidence: list[str] = field(default_factory=list)
     # The concrete model the agent actually resolved for this attempt, when the
     # backend can report it (e.g. hermes echoes it in its session export). Lets a
     # run record the real model even when none was passed and the CLI's own
@@ -66,12 +69,13 @@ class AttemptResult:
 
 @dataclass
 class RunContext:
-    """Everything one attempt needs, plus a scratch dict for backend hooks.
+    """Everything one attempt needs.
 
-    Created fresh per ``run`` call and threaded through the hooks, so a backend
-    can stash per-attempt state (credentials seen, per-attempt config dir) in
-    ``extras`` without touching instance state — the harness object is shared
-    across the runner's worker threads.
+    Created fresh per ``run`` call and threaded through the hooks. It is the
+    only per-attempt state a backend has: the harness object is shared across
+    the runner's worker threads, so anything an attempt needs to remember must
+    be derivable from the context (a config dir under ``isolated_home``, a file
+    the template seeded there) rather than stashed on the instance.
     """
 
     task_id: str
@@ -93,18 +97,23 @@ class RunContext:
     # that supports MCP interpolates and materializes it at run time. ``None``
     # when the spec declares no ``mcp:`` block.
     mcp_servers: dict[str, McpServer] | None = None
-    extras: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        # The context owns its lists. The runner holds one neighbourhood for the
-        # whole run and hands it to every attempt, and the harness object is
-        # shared across worker threads — so a backend that appended to what it
-        # was given would be editing the next attempt's inputs, on another
-        # thread. Copied here rather than at each call site: the guarantee
-        # belongs to the value that crosses the seam, not to whoever built it.
-        self.skill_refs = list(self.skill_refs)
-        self.extra_path = list(self.extra_path)
-        self.forbidden_files = list(self.forbidden_files)
+        """The context owns its lists, and tolerates ``None`` for the optional ones.
+
+        The runner holds one neighbourhood for the whole run and hands it to
+        every attempt, and the harness object is shared across worker threads —
+        so a backend that appended to what it was given would be editing the
+        next attempt's inputs, on another thread. Copied here rather than at
+        each call site: the guarantee belongs to the value that crosses the
+        seam, not to whoever built it.
+
+        The three list fields only. ``mcp_servers`` is deliberately shared: it
+        is read-only to every backend that has one.
+        """
+        self.skill_refs = list(self.skill_refs or [])
+        self.extra_path = list(self.extra_path or [])
+        self.forbidden_files = list(self.forbidden_files or [])
 
 
 @dataclass
@@ -146,6 +155,22 @@ class PromptResult:
     failure: PromptFailure | None = None
 
 
+@dataclass
+class PromptCall:
+    """How to spawn one bare prompt, and how to read its answer back.
+
+    ``read`` is how the backend turns the finished process into a
+    :class:`PromptResult`; ``None`` means its ``_prompt_output``. A backend
+    whose answer lives somewhere the process left behind (codex writes it to a
+    file named on argv) closes over that location here, so no scratch state
+    has to cross between the command hook and the output hook.
+    """
+
+    argv: list[str]
+    stdin: str | None = None
+    read: Callable[[ProcessResult], PromptResult] | None = None
+
+
 class HarnessBackend(ABC):
     """The narrow seam the runner and judge depend on.
 
@@ -158,6 +183,15 @@ class HarnessBackend(ABC):
     @property
     @abstractmethod
     def name(self) -> str: ...
+
+    # The model this backend was built to run, or ``None`` for the CLI's own
+    # default. With ``name``, the engine a run records in ``RunMeta``: the
+    # runner asks the harness rather than being told separately (docs/adr/0004).
+    _model: str | None = None
+
+    @property
+    def model(self) -> str | None:
+        return self._model
 
     # Whether this backend can materialize declared ``mcp:`` servers for the
     # agent-under-test. Default ``False``: the run seam refuses to run a spec
@@ -235,10 +269,13 @@ class CliHarness(HarnessBackend):
     def run(self, ctx: RunContext) -> AttemptResult:
         # The one fact the backend contributes to its own context: a request
         # naming no model means "whatever engine this backend was built with"
-        # (docs/adr/0004). Settled once, here, so every hook below reads a
+        # (docs/adr/0004). Settled once, up front, so every hook below reads a
         # ``ctx.model`` that is already the model the agent will actually run.
-        if ctx.model is None:
-            ctx.model = self._model
+        #
+        # Onto a *copy*, because the caller owns what it handed across the seam
+        # and a backend that edited it would be reaching back through — the same
+        # rule ``RunContext.__post_init__`` enforces for the lists.
+        ctx = replace(ctx, model=ctx.model or self._model)
 
         self._ensure_ready(ctx)
         self._seed_home(ctx)
@@ -271,8 +308,6 @@ class CliHarness(HarnessBackend):
         transcript, final_output = self._fallback(transcript, final_output, proc)
 
         return AttemptResult(
-            task_id=ctx.task_id,
-            attempt=ctx.attempt,
             transcript=transcript,
             final_output=final_output,
             exit_code=proc.returncode,
@@ -303,23 +338,18 @@ class CliHarness(HarnessBackend):
         here.
         """
         model = model or self._model
-        extras: dict = {}
         try:
-            cmd, stdin, cleanup = self._prompt_command(prompt, model, extras)
+            call = self._prompt_command(prompt, model)
         except HarnessConfigurationError as exc:
             return PromptResult(text="", resolved_model=model, error=str(exc))
 
-        try:
-            proc = self._execute(
-                cmd,
-                env=self._prompt_environment(),
-                cwd=cwd,
-                timeout=timeout,
-                stdin=stdin,
-            )
-        finally:
-            if cleanup is not None:
-                cleanup()
+        proc = self._execute(
+            call.argv,
+            env=self._prompt_environment(),
+            cwd=cwd,
+            timeout=timeout,
+            stdin=call.stdin,
+        )
 
         if proc.timed_out:
             return PromptResult(
@@ -327,11 +357,11 @@ class CliHarness(HarnessBackend):
                 resolved_model=model,
                 error=f"{self.name} prompt call timed out after {timeout}s",
             )
-        return self._prompt_output(proc, model, extras)
+        if call.read is not None:
+            return call.read(proc)
+        return self._prompt_output(proc, model)
 
     # --- hooks a backend implements ---------------------------------------
-
-    _model: str | None = None
 
     def _ensure_ready(self, ctx: RunContext) -> None:
         """Raise ``HarnessConfigurationError`` if the CLI can't run. Default: skip."""
@@ -483,14 +513,10 @@ class CliHarness(HarnessBackend):
         except Exception:
             return None
 
-    def _prompt_command(
-        self, prompt: str, model: str | None, extras: dict
-    ) -> tuple[list[str], str | None, Callable[[], None] | None]:
-        """Return ``(argv, stdin_payload, cleanup)`` for a bare prompt call.
+    def _prompt_command(self, prompt: str, model: str | None) -> PromptCall:
+        """The invocation for a bare prompt call.
 
-        Raise ``HarnessConfigurationError`` when the CLI is missing. ``extras``
-        is scratch state shared with ``_prompt_output`` (e.g. an output-file
-        path the command writes and the output hook reads).
+        Raise ``HarnessConfigurationError`` when the CLI is missing.
         """
         raise NotImplementedError(f"{self.name} does not implement _prompt_command")
 
@@ -498,10 +524,12 @@ class CliHarness(HarnessBackend):
         """The env for a bare prompt call. Default: the caller's real environment."""
         return dict(os.environ)
 
-    def _prompt_output(
-        self, proc: ProcessResult, model: str | None, extras: dict
-    ) -> PromptResult:
-        """Read the agent's final answer out of a finished prompt call."""
+    def _prompt_output(self, proc: ProcessResult, model: str | None) -> PromptResult:
+        """Read the agent's final answer out of a finished prompt call.
+
+        The default ``PromptCall.read``; a backend that needs more than the
+        process itself supplies its own ``read`` instead.
+        """
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout).strip()
             suffix = f": {detail[:200]}" if detail else ""

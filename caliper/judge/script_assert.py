@@ -142,8 +142,8 @@ class EvalJudge(Judge):
         self, backend: str = DEFAULT_BACKEND, model: str | None = None
     ) -> None:
         # The judge engine is a runtime axis, resolved from --judge-model (ADR 0004).
-        self._backend = backend
-        self._model = resolve_judge_model(backend, model)
+        self.backend = backend
+        self.model = resolve_judge_model(backend, model)
 
     def evaluate(
         self,
@@ -206,9 +206,9 @@ class EvalJudge(Judge):
         # backend adapters that run attempts also answer the judge, via the
         # ``run_prompt`` half of the backend seam.
         try:
-            harness = get_harness(self._backend, self._model)
+            harness = get_harness(self.backend, self.model)
         except ValueError:
-            return False, f"Unknown judge backend: {self._backend!r}", True, None
+            return False, f"Unknown judge backend: {self.backend!r}", True, None
 
         user_msg = _USER_TMPL.format(
             expect=task.expect,

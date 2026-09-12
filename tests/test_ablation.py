@@ -51,8 +51,6 @@ class RecordingHarness(HarnessBackend):
     def run(self, ctx: RunContext) -> AttemptResult:
         self.installed.append([ref.name for ref in ctx.skill_refs])
         return AttemptResult(
-            task_id=ctx.task_id,
-            attempt=ctx.attempt,
             transcript=[
                 ConversationTurn(
                     role="tool_use",
@@ -70,6 +68,9 @@ class RecordingHarness(HarnessBackend):
 
 
 class PassingJudge:
+    backend = "test"
+    model = None
+
     def evaluate(self, *args, **kwargs) -> JudgeResult:
         return JudgeResult(passed=True, reasoning="ok")
 

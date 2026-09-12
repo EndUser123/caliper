@@ -40,6 +40,9 @@ class OpenSandbox:
 
 
 class SlowJudge:
+    backend = "test"
+    model = None
+
     def evaluate(self, task, transcript, final_output, spec_dir) -> JudgeResult:
         time.sleep(0.05)
         return JudgeResult(passed=True, reasoning="ok")
@@ -47,8 +50,6 @@ class SlowJudge:
 
 def _harness_result(*, exit_code: int = 0, timed_out: bool = False) -> AttemptResult:
     return AttemptResult(
-        task_id="task-001",
-        attempt=1,
         transcript=[ConversationTurn(role="assistant", content="done")],
         final_output="done",
         exit_code=exit_code,

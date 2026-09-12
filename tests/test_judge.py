@@ -56,7 +56,7 @@ def test_eval_judge_expect_only_calls_llm(monkeypatch, tmp_path) -> None:
             True,
             "Codex accepted the transcript.",
             False,
-            self._model,
+            self.model,
         ),
     )
 

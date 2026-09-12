@@ -8,6 +8,12 @@
 > the score?) and `is_execution_noise` (should it be *reported* as a problem?).
 > Before the amendment those were the same predicate, and a correct
 > `activates:`-only spec reported itself as a `judge_error`.
+>
+> **Amended:** the single seam is now `assemble_attempt` in
+> `caliper/attempt.py`. It walks the same precedence, but the early exits that
+> skip the paid judge *are* the labels, so a separate `classify_outcome`
+> re-deriving them was the same rule written twice. `classify_pre_judge` and
+> `judge_outcome` are the two halves it composes.
 
 An attempt's result is a typed `Outcome` (`pass`, `task_fail`, `judge_error`,
 `infra_error`, `timeout`, `cheat`), not just `passed: bool`, so infrastructure

@@ -43,6 +43,9 @@ runner = CliRunner()
 
 
 class PassingJudge:
+    backend = "test"
+    model = None
+
     def evaluate(self, task, transcript, final_output, spec_dir) -> JudgeResult:
         return JudgeResult(passed=True, reasoning="ok")
 
@@ -68,8 +71,6 @@ class CancellingHarness(HarnessBackend):
             # nothing to show for it, and — the part only the spawn knows —
             # `cancelled`, saying *we* killed it rather than it failing.
             return AttemptResult(
-                task_id=ctx.task_id,
-                attempt=ctx.attempt,
                 transcript=[],
                 final_output="",
                 exit_code=-9,
@@ -78,8 +79,6 @@ class CancellingHarness(HarnessBackend):
                 cancelled=True,
             )
         return AttemptResult(
-            task_id=ctx.task_id,
-            attempt=ctx.attempt,
             transcript=[ConversationTurn(role="assistant", content="done")],
             final_output="done",
             exit_code=0,
@@ -101,8 +100,6 @@ class ExpiringHarness(HarnessBackend):
         if ctx.attempt >= self.fail_from:
             raise HarnessConfigurationError("credentials expired mid-run")
         return AttemptResult(
-            task_id=ctx.task_id,
-            attempt=ctx.attempt,
             transcript=[],
             final_output="done",
             exit_code=0,
@@ -202,8 +199,6 @@ class FailsOnItsOwnHarness(HarnessBackend):
     def run(self, ctx: RunContext) -> AttemptResult:
         cancel.request()
         return AttemptResult(
-            task_id=ctx.task_id,
-            attempt=ctx.attempt,
             transcript=[],
             final_output="",
             exit_code=1,

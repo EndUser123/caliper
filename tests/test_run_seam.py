@@ -13,7 +13,7 @@ import subprocess
 from caliper.harness.base import RunContext
 from caliper.harness.claude_code import ClaudeCodeHarness
 
-from conftest import patch_cli_calls
+from conftest import patch_cli_calls, run_context
 
 
 def _agent_says(text: str):
@@ -40,29 +40,16 @@ class _Recording(ClaudeCodeHarness):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self.seen: list[RunContext] = []
-        # What ``extras`` held when the invocation began, captured before this
-        # invocation writes to it.
-        self.extras_on_entry: list[dict] = []
 
     def _command(self, ctx: RunContext):
         self.seen.append(ctx)
-        self.extras_on_entry.append(dict(ctx.extras))
-        ctx.extras["stashed"] = ctx.attempt
         return super()._command(ctx)
 
 
 def _run(harness: ClaudeCodeHarness, tmp_path, **overrides):
-    fields = {
-        "task_id": "task-001",
-        "attempt": 1,
-        "prompt": "Review the diff",
-        "skill_refs": [],
-        "model": None,
-        "timeout": 30,
-        "isolated_home": str(tmp_path / "home"),
-        "extra_path": [],
-    }
-    return harness.run(RunContext(**{**fields, **overrides}))
+    ctx = run_context(isolated_home=str(tmp_path / "home"), **overrides)
+    harness.run(ctx)
+    return ctx
 
 
 def test_the_backends_own_model_answers_a_request_that_names_none(
@@ -76,9 +63,12 @@ def test_the_backends_own_model_answers_a_request_that_names_none(
     patch_cli_calls(monkeypatch, _agent_says("done"))
     harness = _Recording(model="backend-default")
 
-    _run(harness, tmp_path)
+    caller_ctx = _run(harness, tmp_path)
 
     assert harness.seen[0].model == "backend-default"
+    # And the caller's own context is not edited on the way through: the
+    # resolution is the backend's business, not a write-back.
+    assert caller_ctx.model is None
 
 
 def test_a_named_model_is_not_overridden_by_the_backends_own(
@@ -92,15 +82,24 @@ def test_a_named_model_is_not_overridden_by_the_backends_own(
     assert harness.seen[0].model == "asked-for"
 
 
-def test_scratch_state_does_not_survive_into_the_next_invocation(
-    monkeypatch, tmp_path
-) -> None:
-    """``extras`` is per-invocation scratch, and a retry is a second invocation.
+def test_an_empty_model_falls_back_like_an_absent_one(monkeypatch, tmp_path) -> None:
+    """`""` is not a model any more than `None` is, and never was."""
+    patch_cli_calls(monkeypatch, _agent_says("done"))
+    harness = _Recording(model="backend-default")
+
+    _run(harness, tmp_path, model="")
+
+    assert harness.seen[0].model == "backend-default"
+
+
+def test_each_invocation_gets_its_own_context(monkeypatch, tmp_path) -> None:
+    """A retry is a second invocation, and it is handed a second context.
 
     The harness object is shared across the runner's worker threads and reused
-    across a retried attempt, so a backend stashing per-attempt state (a
-    credential it saw, a config dir it made) must not find the previous
-    invocation's still there.
+    across a retried attempt, so the context is the only per-attempt state a
+    backend has (docs/adr/0019). Anything it needs between hooks is derived
+    from the context, never stashed on it or on the instance — which is what
+    lets the caller build a fresh one per shot and be sure nothing leaks across.
     """
     patch_cli_calls(monkeypatch, _agent_says("done"))
     harness = _Recording()
@@ -108,10 +107,8 @@ def test_scratch_state_does_not_survive_into_the_next_invocation(
     _run(harness, tmp_path, attempt=1)
     _run(harness, tmp_path, attempt=2)
 
-    # Not "extras is empty": the template legitimately fills it earlier in the
-    # same invocation. What must be absent is the previous invocation's stash.
-    assert "stashed" not in harness.extras_on_entry[1]
-    assert harness.seen[0].extras is not harness.seen[1].extras
+    assert harness.seen[0] is not harness.seen[1]
+    assert [ctx.attempt for ctx in harness.seen] == [1, 2]
 
 
 def test_the_context_owns_its_lists(tmp_path) -> None:

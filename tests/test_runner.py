@@ -19,8 +19,6 @@ class FailingHarness(HarnessBackend):
 
     def run(self, ctx: RunContext) -> AttemptResult:
         return AttemptResult(
-            task_id=ctx.task_id,
-            attempt=ctx.attempt,
             transcript=[],
             final_output="",
             exit_code=1,
@@ -50,8 +48,6 @@ class MixedOutcomeHarness(HarnessBackend):
         self.attempts.append(ctx.attempt)
         if ctx.attempt in (1, 3):
             return AttemptResult(
-                task_id=ctx.task_id,
-                attempt=ctx.attempt,
                 transcript=[],
                 final_output="",
                 exit_code=1,
@@ -59,8 +55,6 @@ class MixedOutcomeHarness(HarnessBackend):
                 error="agent failed",
             )
         return AttemptResult(
-            task_id=ctx.task_id,
-            attempt=ctx.attempt,
             transcript=[],
             final_output="judge this",
             exit_code=0,
@@ -69,6 +63,9 @@ class MixedOutcomeHarness(HarnessBackend):
 
 
 class RecordingJudge:
+    backend = "test"
+    model = None
+
     def __init__(self) -> None:
         self.calls = 0
 
@@ -78,6 +75,9 @@ class RecordingJudge:
 
 
 class JudgeErrorThenPass:
+    backend = "test"
+    model = None
+
     def __init__(self) -> None:
         self.calls = 0
 
@@ -224,10 +224,15 @@ def test_runner_emits_task_done_when_fail_fast_stops_early(tmp_path) -> None:
 
 
 class ResolvedModelHarness(HarnessBackend):
-    """A harness that reports the concrete model it resolved for each attempt."""
+    """A harness that reports the concrete model it resolved for each attempt.
 
-    def __init__(self, resolved_model: str) -> None:
+    ``model`` is what it was *built* with (``None`` = the CLI's own default);
+    ``resolved_model`` is what actually ran.
+    """
+
+    def __init__(self, resolved_model: str, model: str | None = None) -> None:
         self._resolved = resolved_model
+        self._model = model
 
     @property
     def name(self) -> str:
@@ -235,8 +240,6 @@ class ResolvedModelHarness(HarnessBackend):
 
     def run(self, ctx: RunContext) -> AttemptResult:
         return AttemptResult(
-            task_id=ctx.task_id,
-            attempt=ctx.attempt,
             transcript=[],
             final_output="done",
             exit_code=0,
@@ -248,8 +251,12 @@ class ResolvedModelHarness(HarnessBackend):
 class ModelReportingJudge:
     """A judge that reports the concrete model its autorater resolved."""
 
-    def __init__(self, resolved_model: str) -> None:
+    def __init__(
+        self, resolved_model: str, *, backend: str = "test", model: str | None = None
+    ) -> None:
         self._resolved = resolved_model
+        self.backend = backend
+        self.model = model
 
     def evaluate(self, task, transcript, final_output, spec_dir) -> JudgeResult:
         return JudgeResult(passed=True, reasoning="ok", resolved_model=self._resolved)
@@ -262,12 +269,13 @@ def test_runmeta_records_judge_engine_and_resolved_model(tmp_path) -> None:
     results = run(
         spec=_one_task_spec(),
         spec_path=spec_path,
-        harness=ResolvedModelHarness("stepfun/step-3.7-flash:free"),
-        judge=RecordingJudge(),
         # No skill model requested — the backend's resolved model should fill it.
-        model=None,
-        judge_backend="hermes",
-        judge_model="anthropic/claude-sonnet-4.6",
+        harness=ResolvedModelHarness("stepfun/step-3.7-flash:free"),
+        judge=ModelReportingJudge(
+            "anthropic/claude-sonnet-4.6",
+            backend="hermes",
+            model="anthropic/claude-sonnet-4.6",
+        ),
         k=1,
         workers=1,
         timeout=30,
@@ -288,10 +296,8 @@ def test_runmeta_fills_default_judge_model_from_autorater(tmp_path) -> None:
         spec=_one_task_spec(),
         spec_path=spec_path,
         harness=ResolvedModelHarness("some/model"),
-        judge=ModelReportingJudge("claude-opus-4-8"),
-        judge_backend="claude-code",
         # No judge model requested — the autorater's concrete model fills it.
-        judge_model=None,
+        judge=ModelReportingJudge("claude-opus-4-8", backend="claude-code"),
         k=1,
         workers=1,
         timeout=30,
@@ -308,9 +314,10 @@ def test_runmeta_prefers_explicit_model_over_resolved(tmp_path) -> None:
     results = run(
         spec=_one_task_spec(),
         spec_path=spec_path,
-        harness=ResolvedModelHarness("some/other-model"),
+        harness=ResolvedModelHarness(
+            "some/other-model", model="anthropic/claude-sonnet-4.6"
+        ),
         judge=RecordingJudge(),
-        model="anthropic/claude-sonnet-4.6",
         k=1,
         workers=1,
         timeout=30,
@@ -326,8 +333,6 @@ class TranscriptHarness(HarnessBackend):
 
     def run(self, ctx: RunContext) -> AttemptResult:
         return AttemptResult(
-            task_id=ctx.task_id,
-            attempt=ctx.attempt,
             transcript=[
                 ConversationTurn(role="assistant", content="calling tool"),
                 ConversationTurn(

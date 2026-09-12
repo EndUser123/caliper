@@ -52,8 +52,6 @@ def _result(
     ``caliper.outcome.answered``.
     """
     return AttemptResult(
-        task_id="task-001",
-        attempt=1,
         transcript=[ConversationTurn(role="assistant", content=output)],
         final_output=output,
         exit_code=exit_code,
@@ -213,6 +211,18 @@ class ThrottleThenPassHarness(HarnessBackend):
         return _result()
 
 
+class ContextRecordingHarness(ThrottleThenPassHarness):
+    """Remembers each invocation's context."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.contexts: list[RunContext] = []
+
+    def run(self, ctx: RunContext) -> AttemptResult:
+        self.contexts.append(ctx)
+        return super().run(ctx)
+
+
 class CappedHarness(HarnessBackend):
     @property
     def name(self) -> str:
@@ -223,6 +233,9 @@ class CappedHarness(HarnessBackend):
 
 
 class PassingJudge:
+    backend = "test"
+    model = None
+
     def evaluate(self, task, transcript, final_output, spec_dir) -> JudgeResult:
         return JudgeResult(passed=True, reasoning="ok")
 
@@ -417,3 +430,33 @@ def test_a_timeout_carrying_throttle_text_is_still_not_retried() -> None:
 
     assert len(calls) == 1
     assert invoked.result.timed_out is True
+
+
+def test_each_invocation_of_an_attempt_gets_its_own_context(
+    tmp_path, monkeypatch
+) -> None:
+    """A retry is a second invocation, so it starts from a clean context.
+
+    The context is the only per-attempt state a backend has. Building it once
+    per *attempt* and reusing it across the retry would hand the second
+    invocation the first one's leftovers — and the first invocation is the one
+    that failed.
+    """
+    monkeypatch.setattr("caliper.retry.RetryPolicy", lambda: NO_WAIT)
+    harness = ContextRecordingHarness()
+
+    run(
+        spec=_spec(),
+        spec_path=_spec_file(tmp_path),
+        harness=harness,
+        judge=PassingJudge(),
+        k=1,
+        workers=1,
+        timeout=5,
+    )
+
+    # One attempt, throttled once: two invocations, two contexts.
+    first, second = harness.contexts
+    assert first is not second
+    # Same shot, second spawn: everything the caller decides is identical.
+    assert (first.task_id, first.attempt) == (second.task_id, second.attempt)
