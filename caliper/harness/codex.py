@@ -265,7 +265,8 @@ class CodexHarness(CliHarness):
         # `--output-last-message` writes the final answer to a file, which is
         # the only clean channel: codex's stdout is a noisy session log. The
         # file outlives the process so the reader can pick it up; the reader
-        # closes over its path and deletes it once read.
+        # closes over its path, and ``cleanup`` removes it however the call
+        # ended — a timeout never reaches the reader.
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as output_file:
             output_path = Path(output_file.name)
 
@@ -286,16 +287,13 @@ class CodexHarness(CliHarness):
             cmd,
             stdin=prompt,
             read=lambda proc: self._read_last_message(proc, model, output_path),
+            cleanup=lambda: output_path.unlink(missing_ok=True),
         )
 
     def _read_last_message(
         self, proc: ProcessResult, model: str | None, output_path: Path
     ) -> PromptResult:
-        try:
-            raw = output_path.read_text().strip() if output_path.exists() else ""
-        finally:
-            output_path.unlink(missing_ok=True)
-
+        raw = output_path.read_text().strip() if output_path.exists() else ""
         raw = raw or proc.stdout.strip()
         if proc.returncode != 0:
             detail = _extract_codex_error(proc.stderr) or _extract_codex_error(raw)

@@ -6,6 +6,7 @@ from caliper.harness.base import (
     HarnessBackend,
     RunContext,
 )
+from caliper.judge import EvalJudge
 from caliper.judge.base import JudgeResult
 from caliper.runner import run
 from caliper.schema.results import Outcome
@@ -305,6 +306,30 @@ def test_runmeta_fills_default_judge_model_from_autorater(tmp_path) -> None:
 
     assert results.run.judge_backend == "claude-code"
     assert results.run.judge_model == "claude-opus-4-8"
+
+
+def test_runmeta_records_no_judge_model_when_no_autorater_ran(tmp_path) -> None:
+    """An assert-only run names no judge model: nothing graded it but a script.
+
+    ``EvalJudge`` applies a pinned default when the caller omits ``--judge-model``,
+    but only at the moment it calls an autorater. Recording that default on a
+    run that never made the call would claim a model graded work it never saw.
+    """
+    spec_path = tmp_path / "prov.eval.yaml"
+    spec_path.write_text("tasks: []\n")
+
+    results = run(
+        spec=_one_task_spec(),
+        spec_path=spec_path,
+        harness=ResolvedModelHarness("some/model"),
+        judge=EvalJudge(backend="claude-code"),
+        k=1,
+        workers=1,
+        timeout=30,
+    )
+
+    assert results.run.judge_backend == "claude-code"
+    assert results.run.judge_model is None
 
 
 def test_runmeta_prefers_explicit_model_over_resolved(tmp_path) -> None:

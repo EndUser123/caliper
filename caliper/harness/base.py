@@ -163,12 +163,15 @@ class PromptCall:
     :class:`PromptResult`; ``None`` means its ``_prompt_output``. A backend
     whose answer lives somewhere the process left behind (codex writes it to a
     file named on argv) closes over that location here, so no scratch state
-    has to cross between the command hook and the output hook.
+    has to cross between the command hook and the output hook. ``cleanup``
+    runs once the call is over — answered, timed out, or raised — so a staged
+    file is removed however the process ended.
     """
 
     argv: list[str]
     stdin: str | None = None
     read: Callable[[ProcessResult], PromptResult] | None = None
+    cleanup: Callable[[], None] | None = None
 
 
 class HarnessBackend(ABC):
@@ -344,23 +347,26 @@ class CliHarness(HarnessBackend):
         except HarnessConfigurationError as exc:
             return PromptResult(text="", resolved_model=model, error=str(exc))
 
-        proc = self._execute(
-            call.argv,
-            env=self._prompt_environment(),
-            cwd=cwd,
-            timeout=timeout,
-            stdin=call.stdin,
-        )
-
-        if proc.timed_out:
-            return PromptResult(
-                text="",
-                resolved_model=model,
-                error=f"{self.name} prompt call timed out after {timeout}s",
+        try:
+            proc = self._execute(
+                call.argv,
+                env=self._prompt_environment(),
+                cwd=cwd,
+                timeout=timeout,
+                stdin=call.stdin,
             )
-        if call.read is not None:
-            return call.read(proc)
-        return self._prompt_output(proc, model)
+            if proc.timed_out:
+                return PromptResult(
+                    text="",
+                    resolved_model=model,
+                    error=f"{self.name} prompt call timed out after {timeout}s",
+                )
+            if call.read is not None:
+                return call.read(proc)
+            return self._prompt_output(proc, model)
+        finally:
+            if call.cleanup is not None:
+                call.cleanup()
 
     # --- hooks a backend implements ---------------------------------------
 
