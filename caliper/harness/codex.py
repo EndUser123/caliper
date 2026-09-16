@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -51,19 +52,29 @@ class CodexHarness(CliHarness):
     def skills_root(self, ctx: RunContext) -> Path:
         return Path(ctx.isolated_home) / ".codex" / "skills"
 
+    def _source_home(self) -> Path:
+        """The codex config dir attempts are seeded from.
+
+        ``CALIPER_CODEX_HOME`` overrides ``~/.codex`` so a second Codex
+        account (its own CODEX_HOME) can carry an eval without touching the
+        primary account's quota.
+        """
+        override = os.environ.get("CALIPER_CODEX_HOME")
+        return Path(override) if override else Path.home() / ".codex"
+
     def seed_files(self, ctx: RunContext) -> list[tuple[Path, Path]]:
-        real = Path.home() / ".codex"
+        source = self._source_home()
         codex_home = Path(ctx.isolated_home) / ".codex"
         # config.toml is deliberately absent: it is rewritten rather than copied
         # (see ``_materialize_config``), so seeding it verbatim would leak the
         # user's ambient model pin and MCP servers into the attempt.
-        return [(real / "auth.json", codex_home / "auth.json")]
+        return [(source / "auth.json", codex_home / "auth.json")]
 
     def _prepare(self, ctx: RunContext) -> None:
         self._materialize_config(
             ctx,
             Path(ctx.isolated_home) / ".codex",
-            Path.home() / ".codex" / "config.toml",
+            self._source_home() / "config.toml",
         )
 
     def _command(
@@ -89,7 +100,12 @@ class CodexHarness(CliHarness):
         return cmd, full_prompt, None
 
     def _environment(self, ctx: RunContext) -> dict[str, str]:
-        return self._isolated_env(ctx)
+        # Windows: codex resolves its config dir from CODEX_HOME/USERPROFILE,
+        # not HOME, so HOME-isolation alone leaves attempts reading the real
+        # account. Point CODEX_HOME at the seeded isolated config explicitly.
+        return self._isolated_env(
+            ctx, extra={"CODEX_HOME": str(Path(ctx.isolated_home) / ".codex")}
+        )
 
     def _cli_available(self) -> bool:
         codex = self.cli_path()
