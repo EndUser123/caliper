@@ -74,7 +74,7 @@ class RecordingJudge:
     def __init__(self) -> None:
         self.calls = 0
 
-    def evaluate(self, task, transcript, final_output, spec_dir) -> JudgeResult:
+    def evaluate(self, task, transcript, final_output, spec_dir, attempt_dir=None) -> JudgeResult:
         self.calls += 1
         return JudgeResult(passed=True, reasoning="should not run")
 
@@ -86,7 +86,7 @@ class JudgeErrorThenPass:
     def __init__(self) -> None:
         self.calls = 0
 
-    def evaluate(self, task, transcript, final_output, spec_dir) -> JudgeResult:
+    def evaluate(self, task, transcript, final_output, spec_dir, attempt_dir=None) -> JudgeResult:
         self.calls += 1
         if self.calls == 1:
             return JudgeResult(passed=False, reasoning="judge flaked", errored=True)
@@ -263,7 +263,7 @@ class ModelReportingJudge:
         self.backend = backend
         self.model = model
 
-    def evaluate(self, task, transcript, final_output, spec_dir) -> JudgeResult:
+    def evaluate(self, task, transcript, final_output, spec_dir, attempt_dir=None) -> JudgeResult:
         return JudgeResult(passed=True, reasoning="ok", resolved_model=self._resolved)
 
 

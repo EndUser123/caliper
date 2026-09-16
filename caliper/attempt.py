@@ -53,6 +53,7 @@ def assemble_attempt(
     sandbox: Sandbox,
     judge: Judge,
     retries: int = 0,
+    attempt_dir: str | None = None,
 ) -> AssembledAttempt:
     """Grade one finished harness run into an ``AttemptRecord``.
 
@@ -143,6 +144,7 @@ def assemble_attempt(
         transcript=result.transcript,
         final_output=result.final_output,
         spec_dir=spec_dir,
+        attempt_dir=attempt_dir,
     )
     # Timed here rather than inside the judge: this is the only place that knows
     # an attempt reached one at all, and every earlier exit above leaves
