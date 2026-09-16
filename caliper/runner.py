@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -400,7 +401,13 @@ def _run_attempt(task: TaskSpec, attempt: int, env: _RunEnv) -> AttemptRecord | 
     spec, spec_path = env.spec, env.spec_path
     tmp_dir = tempfile.mkdtemp(prefix="caliper-")
     try:
-        _run_shell(task.setup)
+        _run_shell(
+            task.setup,
+            attempt_dir=tmp_dir,
+            task_id=task.id,
+            attempt=attempt,
+            spec_dir=str(spec_path.parent),
+        )
         resolved_extra_path = [
             str((spec_path.parent / p).resolve()) for p in spec.sandbox.extra_path
         ]
@@ -466,7 +473,13 @@ def _run_attempt(task: TaskSpec, attempt: int, env: _RunEnv) -> AttemptRecord | 
 
         return assembled.record
     finally:
-        _run_shell(task.cleanup)
+        _run_shell(
+            task.cleanup,
+            attempt_dir=tmp_dir,
+            task_id=task.id,
+            attempt=attempt,
+            spec_dir=str(spec_path.parent),
+        )
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
@@ -489,6 +502,32 @@ def _announce(
         )
 
 
-def _run_shell(cmd: str | None) -> None:
-    if cmd:
-        subprocess.run(cmd, shell=True, check=False)
+def _run_shell(
+    cmd: str | None,
+    *,
+    attempt_dir: str,
+    task_id: str,
+    attempt: int,
+    spec_dir: str,
+) -> None:
+    """Run a setup/cleanup command inside the attempt's own home.
+
+    The working directory is the attempt's isolated home — the same boundary
+    the agent itself gets — so ``k`` parallel attempts whose setups write
+    files cannot race on a shared directory or drop artifacts into caliper's
+    invocation directory (where they could land inside a tracked repository).
+    The ``CALIPER_*`` env vars name the boundaries a spec may legitimately
+    reach for: the spec directory (fixtures) and this attempt's home.
+    """
+    if not cmd:
+        return
+    shell_env = dict(os.environ)
+    shell_env.update(
+        {
+            "CALIPER_TASK_ID": task_id,
+            "CALIPER_ATTEMPT": str(attempt),
+            "CALIPER_ATTEMPT_DIR": attempt_dir,
+            "CALIPER_SPEC_DIR": spec_dir,
+        }
+    )
+    subprocess.run(cmd, shell=True, check=False, cwd=attempt_dir, env=shell_env)

@@ -106,6 +106,10 @@ def assemble_attempt(
                 duration_seconds=result.duration_seconds,
                 outcome=outcome,
                 usage=result.usage,
+                # What actually ran, from the harness (``None`` when the
+                # backend cannot report it) — a drift-visible fact, not a
+                # run-level assumption.
+                model=result.resolved_model,
                 transcript=_persist_transcript(result.transcript),
                 activated=activated,
                 activation_passed=activation_passed,

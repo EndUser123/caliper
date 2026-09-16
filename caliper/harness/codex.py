@@ -111,6 +111,27 @@ class CodexHarness(CliHarness):
         codex = self.cli_path()
         return codex is not None and self._version_ok(codex, timeout=5)
 
+    def _resolved_model(self, proc: ProcessResult, ctx: RunContext) -> str | None:
+        """The model this attempt actually ran, when the stream names it.
+
+        Codex's ``exec --json`` stream opens with a ``thread.started`` event,
+        and builds that carry the resolved model put it there — the one
+        observation of a CLI-default choice when the invocation passed no
+        ``--model``. Falls back to the requested model; ``None`` when neither
+        the stream nor the invocation names one.
+        """
+        for line in proc.stdout.splitlines():
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(event, dict) or event.get("type") != "thread.started":
+                continue
+            model = event.get("model")
+            if isinstance(model, str) and model:
+                return model
+        return ctx.model
+
     def _usage(self, proc: ProcessResult, ctx: RunContext) -> TokenUsage | None:
         """Read the last ``turn.completed`` event's ``usage``.
 
